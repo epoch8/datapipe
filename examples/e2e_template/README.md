@@ -104,7 +104,7 @@ Default quick start uses MinIO from `docker compose`. With services running and 
 uv run python scripts/seed_sample_data.py
 ```
 
-The first run downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. Re-runs reuse the cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) are created later by `datapipe db create-all` (see [Running](#running)).
+The first run downloads COCO annotations once into `~/.cache/datapipe/coco/` (~241MB), then fetches ~20 JPEGs and uploads them to `s3://datapipe-e2e/images/`. It also ensures YOLO smoke weights under `sample_data/models/` (`yolo11n.pt`, `yolo11n-pose.pt`) used by `DETECTION_MODEL_CONFIG` / `KEYPOINTS_MODEL_CONFIG`. Re-runs reuse the COCO cache after validating size, zip integrity, and required JSON entries. Override with `DATAPIPE_CACHE_DIR`. Postgres schemas (`DB_SCHEMA_DETECTION`, `DB_SCHEMA_KEYPOINTS`) are created later by `datapipe db create-all` (see [Running](#running)).
 
 Options:
 
@@ -141,7 +141,7 @@ Most task-specific settings live in each template's `config.py`:
 
 - **Paths** — `DATAPIPE_E2E_DIR` is the single root: input images come from `$DATAPIPE_E2E_DIR/images/` and `working_dir` (models, derived images) is `$DATAPIPE_E2E_DIR/datapipe/`. They are siblings by construction (see [Data ingest](#data-ingest)).
 - **Label Studio UI** — `LABEL_CONFIG` (XML labeling interface) and `PROJECT_NAME`. Label names in `LABEL_CONFIG` must match `CLASSES_TO_KEEP` (and `KEYPOINTS_LABELS` for keypoints).
-- **Detection** — `CLASSES_TO_KEEP` filters predictions/annotations; `COCO_CLASSES` and `DETECTION_MODEL_CONFIG` set the YOLO class list and pretrained weights (`yolo11n.pt` by default).
+- **Detection** — `CLASSES_TO_KEEP` filters predictions/annotations; `COCO_CLASSES` and `DETECTION_MODEL_CONFIG` set the YOLO class list and pretrained weights (`sample_data/models/yolo11n.pt` by default).
 - **Keypoints** — `KEYPOINTS_LABELS` defines keypoint order for LS ↔ datapipe conversion; `CLASSES_TO_KEEP` filters bbox class; `KEYPOINTS_MODEL_CONFIG` and `COCO_PERSON_KEYPOINT_FLIP_IDX` configure the pose model and flip augmentation.
 
 Training hyperparameters (`epochs`, `batch`, `imgsz`, base checkpoint) are in `app.py` inside `YoloV8_TrainingConfig`. If you rename LS control tags in `LABEL_CONFIG`, update the matching logic in `steps.py` (`bboxes_to_ls_prediction`, `parse_annotations_from_label_studio`).
@@ -158,10 +158,10 @@ datapipe db create-all
 datapipe step --labels=stage=annotation run
 ```
 
-After tasks appear in Label Studio, annotate them and sync back:
+After tasks appear in Label Studio, annotate them, then re-run annotation (syncs LS) and continue:
 
 ```bash
-datapipe step --labels=stage=ls-sync run
+datapipe step --labels=stage=annotation run
 datapipe step --labels=stage=train run
 datapipe step --labels=stage=fiftyone run
 ```
@@ -181,10 +181,10 @@ datapipe db create-all
 datapipe step --labels=stage=annotation run
 ```
 
-After tasks appear in Label Studio, annotate them and sync back:
+After tasks appear in Label Studio, annotate them, then re-run annotation (syncs LS) and continue:
 
 ```bash
-datapipe step --labels=stage=ls-sync run
+datapipe step --labels=stage=annotation run
 datapipe step --labels=stage=train run
 datapipe step --labels=stage=fiftyone run
 ```

@@ -4,18 +4,22 @@ from datapipe.compute import DatapipeApp, Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
+from datapipe.types import Required
 from datapipe_label_studio.upload_predictions_pipeline import LabelStudioUploadPredictions
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
 from datapipe_ml.metrics.model_selection import FindBestModel
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
-from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
+from datapipe_ml.workflows.detection_classification.metrics import CountMetrics_Subset_PipelineModel
 from datapipe_ml.tasks.detection.train.yolov8 import Train_YoloV8_DetectionModel, YoloV8_TrainingConfig
+from datapipe_ml.training.train_config_id import TrainingConfigPreset
 
 import steps
 from config import (
     DATAPIPE_DIR,
+    DETECTION_MODEL_CONFIG,
+    CLASSES_TO_KEEP,
     datapipe_tmp_folder,
     DBCONN,
     label_studio_storages,
@@ -23,6 +27,9 @@ from config import (
     LABEL_STUDIO_API_KEY,
     LABEL_STUDIO_URL,
     PROJECT_NAME,
+    gpu_executor,
+    metrics_executor,
+    parallel_io_executor,
 )
 from data import catalog
 
@@ -37,32 +44,61 @@ pipeline = Pipeline(
             steps.list_detection_models,
             outputs=["detection_model"],
             labels=[("stage", "annotation")],
+            delete_stale=False,
         ),
         BatchTransform(
-            func=steps.untracked_inference,
-            inputs=["s3_images"],
-            outputs=["detection_predictions"],
+            func=steps.get_images_without_ground_truth,
+            inputs=["s3_images", "image__ground_truth"],
+            outputs=["sec__image_without_ground_truth"],
             transform_keys=["image_name"],
+            kwargs=dict(primary_keys=["image_name"]),
+            labels=[("stage", "annotation")],
+        ),
+        BatchTransform(
+            func=steps.resolve_best_detection_model,
+            inputs=["detection_model", "best_detection_model"],
+            outputs=["best_detection_model"],
+            transform_keys=["detection_model_id"],
             kwargs=dict(
-                best_model_table="best_detection_model",
-                trained_models_table="detection_model_train",
-                fallback_model_table="detection_model",
                 model_id_column="detection_model_id",
-                primary_keys=["image_name"],
-                image__image_path__name="image_url",
-                bbox_id__name="bbox_id",
-                batch_size_default=1,
-                detection_model_primary_keys=["detection_model_id"],
+                fallback_model_id=DETECTION_MODEL_CONFIG["detection_model_id"],
             ),
             labels=[("stage", "annotation")],
         ),
+        Inference_DetectionModel(
+            input__image=["s3_images", "sec__image_without_ground_truth"],
+            input__detection_model=["detection_model", "best_detection_model"],
+            output__detection_prediction="ls_detection_prediction_raw",
+            primary_keys=["image_name"],
+            bbox_id__name=None,
+            image__image_path__name="image_url",
+            batch_size_default=1,
+            executor_config=gpu_executor(),
+            labels=[("stage", "annotation")],
+        ),
+        BatchTransform(
+            func=steps.filter_bboxes_by_classes,
+            inputs=["ls_detection_prediction_raw"],
+            outputs=["ls_detection_prediction"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "annotation")],
+            kwargs=dict(
+                classes_to_keep=CLASSES_TO_KEEP,
+                primary_keys=["image_name"],
+                model_id_column="detection_model_id",
+            ),
+        ),
         BatchTransform(
             func=steps.bboxes_to_ls_prediction,
-            inputs=["detection_predictions", "s3_images"],
+            inputs=["ls_detection_prediction", "s3_images"],
             outputs=["images_with_predictions"],
-            transform_keys=["image_name"],
+            transform_keys=["image_name", "detection_model_id"],
             labels=[("stage", "annotation")],
-            kwargs=dict(image__image_path__name="image_url"),
+            kwargs=dict(
+                image__image_path__name="image_url",
+                primary_keys=["image_name"],
+                model_keys=["detection_model_id"],
+            ),
         ),
         LabelStudioUploadTasks(
             input__item="s3_images",
@@ -77,24 +113,26 @@ pipeline = Pipeline(
             columns=["image_url"],
             storages=label_studio_storages(),
             chunk_size=100,
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            labels=[("stage", "annotation")],
         ),
         LabelStudioUploadPredictions(
             input__item__has__prediction="images_with_predictions",
             input__label_studio_project_task="ls_task",
+            input__best_model="best_detection_model",
             output__label_studio_project_prediction="ls_predictions",
+            output__label_studio_current_model_version="ls_current_model_version",
             ls_url=LABEL_STUDIO_URL,
             api_key=LABEL_STUDIO_API_KEY,
             project_identifier=PROJECT_NAME,
-            primary_keys=["image_name"],
-            model_version__column="detection_model_id",
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            primary_keys=["image_name", "detection_model_id"],
+            model_keys=["detection_model_id"],
+            labels=[("stage", "annotation")],
         ),
         BatchTransform(
             func=steps.parse_annotations_from_label_studio,
             inputs=["ls_annotations"],
             outputs=["image__ground_truth"],
-            labels=[("stage", "annotation"), ("stage", "ls-sync")],
+            labels=[("stage", "annotation")],
             transform_keys=["image_name"],
         ),
         BatchTransform(
@@ -116,22 +154,24 @@ pipeline = Pipeline(
             output__detection_frozen_dataset="detection_frozen_dataset",
             output__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
             working_dir=str(DATAPIPE_DIR),
-            min_within_time="1d",
+            min_within_time="15min",
             min_delta=10,
             primary_keys=["image_name"],
             bbox_id__name=None,
             image__image_path__name="image_url",
             labels=[("stage", "train"), ("stage", "train-prepare")],
-            create_table=True,
         ),
         Train_YoloV8_DetectionModel(  # type: ignore[list-item]
             input__detection_frozen_dataset="detection_frozen_dataset",
             input__detection_frozen_dataset__has__image_gt="detection_frozen_dataset__has__image_gt",
             output__yolov8_train_config="yolov8_train_config",
+            output__yolov8_custom_train_config="yolov8_custom_train_config",
+            output__detection_training_request="detection_training_request",
+            output__model_detection_size_for_resize="model_detection_size_for_resize",
             output__detection_size_for_resize="detection_size_for_resize",
             output__detection_frozen_dataset__resized_image_file="detection_frozen_dataset__resized_image_file",
             output__detection_frozen_dataset__yolo_txt="detection_frozen_dataset__yolo_txt",
-            output__detection_model="detection_model_train",
+            output__detection_model="detection_model",
             output__detection_model_is_trained_on_detection_frozen_dataset=(
                 "detection_model_is_trained_on_detection_frozen_dataset"
             ),
@@ -141,12 +181,16 @@ pipeline = Pipeline(
             working_dir=str(DATAPIPE_DIR),
             tmp_folder=datapipe_tmp_folder(),
             yolov8_train_configs=[
-                YoloV8_TrainingConfig(
-                    model="yolov8n.pt",
-                    imgsz=320,
-                    batch=10,
-                    epochs=30,
-                    exist_ok=True,
+                TrainingConfigPreset(
+                    name="Standard YOLOv8s 640",
+                    description="Default YOLOv8s detection preset",
+                    config=YoloV8_TrainingConfig(
+                        model="yolov8s.pt",
+                        imgsz=640,
+                        batch=10,
+                        epochs=30,
+                        exist_ok=True,
+                    ),
                 )
             ],
             sync_config=TrainingSyncConfig(
@@ -166,46 +210,61 @@ pipeline = Pipeline(
             ),
             primary_keys=["image_name"],
             bbox_id__name=None,
-            labels=[("stage", "train")],
-            create_table=True,
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "train-yolo")],
             allow_sample_size_mismatch=True,
             model_suffix="_e2e",
+            prepare_data_executor_config=parallel_io_executor(),
         ),
         Inference_DetectionModel(
-            input__image="s3_images",
-            input__detection_model="detection_model_train",
-            output__detection_prediction="detection_prediction_train",
+            input__image=["s3_images", "image__subset"],
+            input__detection_model="detection_model",
+            output__detection_prediction="detection_prediction_raw",
             primary_keys=["image_name"],
             bbox_id__name=None,
-            labels=[("stage", "train"), ("stage", "inference")],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "inference")],
             image__image_path__name="image_url",
             batch_size_default=1,
-            create_table=True,
+            executor_config=gpu_executor(),
         ),
-        CountMetrics_Subset_DetectionModel(
+        BatchTransform(
+            func=steps.filter_bboxes_by_classes,
+            inputs=["detection_prediction_raw"],
+            outputs=["detection_prediction"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "inference")],
+            kwargs=dict(
+                classes_to_keep=CLASSES_TO_KEEP,
+                primary_keys=["image_name"],
+                model_id_column="detection_model_id",
+            ),
+        ),
+        CountMetrics_Subset_PipelineModel(
             input__image__ground_truth="image__ground_truth",
             input__subset__has__image="image__subset",
-            input__detection_prediction="detection_prediction_train",
-            output__detection_model__metrics__on__image="detection_model_train__metrics_on_image",
-            output__detection_model__metrics__on__subset="detection_model_train__metrics_on_subset",
+            input__pipeline_prediction="detection_prediction",
+            output__pipeline_model__metrics_on__image="pipeline_model__metrics_on_image",
+            output__pipeline_model__metrics_by_cls_on__subset="pipeline_model__metrics_by_cls_on_subset",
+            output__pipeline_model__metrics_on__subset="pipeline_model__metrics_on_subset",
             primary_keys=["image_name"],
             bbox_id__name=None,
-            labels=[("stage", "train"), ("stage", "count-metrics")],
+            pipeline_model_primary_keys=["detection_model_id"],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "count-metrics")],
             minimum_iou=0.5,
-            create_table=True,
+            executor_config=metrics_executor(),
+            # filters={"subset_id": "val"},
         ),
         FindBestModel(
-            input__model="detection_model_train",
-            input__model__metrics_on__subset="detection_model_train__metrics_on_subset",
+            input__model="detection_model",
+            input__model__metrics_on__subset="pipeline_model__metrics_on_subset",
             output__attr__model__is_best="attr__detection_model__is_best",
             output__best_model="best_detection_model",
             subset_id="val",
             is_best__name="detection_model__is_best",
             primary_keys=["detection_model_id"],
-            metric__name="calc__f1_score",
+            metric__name="calc__weighted_f1_score",
             func="max",
             group_by=None,
-            labels=[("stage", "train"), ("stage", "count-metrics")],
+            labels=[("stage", "train"), ("stage", "train-without-freeze"), ("stage", "count-metrics")],
         ),
         BatchTransform(
             func=steps.download_images,
@@ -213,6 +272,7 @@ pipeline = Pipeline(
             outputs=["local_images"],
             transform_keys=["image_name"],
             labels=[("stage", "fiftyone")],
+            executor_config=parallel_io_executor(),
             kwargs=dict(
                 image__image_path__name="image_url",
                 image__local_image_path__name="local_path",
@@ -220,20 +280,39 @@ pipeline = Pipeline(
         ),
         BatchTransform(
             func=steps.publish_to_fiftyone,
-            inputs=["local_images", "detection_prediction_train"],
-            outputs=["fiftyone_predictions"],
+            inputs=["local_images"],
+            outputs=["fiftyone_images"],
             labels=[("stage", "fiftyone")],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
         ),
         BatchTransform(
-            func=steps.publish_to_fiftyone,
-            inputs=["local_images", "image__ground_truth"],
+            func=steps.publish_to_fiftyone_ground_truth,
+            inputs=["local_images", Required("image__ground_truth"), Required("image__subset")],
             outputs=["fiftyone_annotations"],
             labels=[("stage", "fiftyone")],
-            kwargs=dict(primary_keys=["image_name"], image__image_path__name="local_path"),
+            kwargs=dict(
+                primary_keys=["image_name"],
+                image__image_path__name="local_path",
+            ),
+        ),
+        BatchTransform(
+            func=steps.publish_to_fiftyone_predictions_from_best_model,
+            inputs=["local_images", "detection_prediction", Required("best_detection_model")],
+            outputs=["fiftyone_predictions_from_best_model"],
+            transform_keys=["image_name", "detection_model_id"],
+            labels=[("stage", "fiftyone")],
+            kwargs=dict(
+                primary_keys=["image_name"],
+                model_keys=["detection_model_id"],
+                image__image_path__name="local_path",
+            ),
         ),
     ]
 )
 
-ds = DataStore(DBCONN, create_meta_table=True)
+
+ds = DataStore(DBCONN)
 app = DatapipeApp(ds, catalog, pipeline)
