@@ -18,7 +18,7 @@ Each `examples/*` pipeline has a dedicated setup skill — pick by what it does:
 | `e2e_template/image_detection` | YOLO detection + Label Studio human-in-the-loop → train → FiftyOne | **setup-e2e-template** |
 | `e2e_template/image_keypoints` | YOLO-pose keypoints + Label Studio → train → FiftyOne | **setup-e2e-template** |
 | `sam_cvat` | SAM3 text-prompt boxes+masks → CVAT pre-annotations | **setup-sam-cvat** |
-| `detection_tags` | YOLO detection + **tags** (per-scenario metrics), no Label Studio / FiftyOne, GT injected | **setup-detection-tags** |
+| `detection_tags` | YOLO detection + **tags** (per-scenario metrics), injected GT, FiftyOne A/B view | **setup-detection-tags** |
 | `ocr` | Multi-LLM structured OCR (OpenAI/Gemini/Qwen) on passport/id-doc images → FiftyOne | **setup-ocr** |
 
 ## Ask first — don't assume (only the unresolved)
@@ -38,8 +38,8 @@ useful results. The per-example skill lists the exact knobs.
 
 ## Universal prerequisites (every example)
 1. **PostgreSQL** at `DB_URL`. embedder + sam_cvat + ocr need an EXTERNAL Postgres (they don't start one);
-   e2e_template / detection_tags bundle Postgres in `docker compose`. Empty DB is fine; tables auto-create via
-   `datapipe db create-all`. `.env.example` default `...postgres:postgres@localhost:5432/postgres`.
+   e2e_template / detection_tags bundle Postgres (+ ClickHouse for ops run logs) in `docker compose`. Empty DB is fine; tables auto-create via
+   `datapipe db create-all`. `.env.example` sets `DB_URL` and `CLICKHOUSE_RUN_LOGS_URL` (required for `datapipe --pipeline app api`).
    External quick start: `docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=postgres -p 5432:5432 postgres:16`
    (k8s pod / no docker → conda postgres, `initdb` as non-root with `--locale=C`.)
 2. **A GPU big enough** (`nvidia-smi`): DINOv2/YOLO fit ~8 GB; SAM3 wants >8 GB (OOM'd on an 8 GB Pascal in our tests).
@@ -48,6 +48,11 @@ useful results. The per-example skill lists the exact knobs.
    needs an external CVAT you provide (URL + creds + a project whose labels match its config).
 4. **`uv` + Python ≥3.10,<3.13.** Each example has a `pyproject.toml` → `uv sync` (cu124 torch pinned,
    CUDA OOTB; no manual venv/pip). Read-only/small `$HOME`: `export UV_CACHE_DIR=/tmp/uvcache HF_HOME=/tmp/hf`.
+   **ML UI / ops specs:** examples with `datapipe-app` + metrics/training panels also pull
+   **`datapipe-app-ml-ops`** (ops specs, image records, observability routes — not `datapipe-ml`).
+   Pipeline code imports `datapipe_app_ml_ops.ops_specs`; the observability plugin entry point lives there too.
+   **Legacy CPU (pre-AVX2, e.g. epoch8 gpu5):** on `e2e_template` / `detection_tags` only —
+   `uv sync --extra old-cpu` then force `polars-lts-cpu` (see those skills' Troubleshooting).
 5. **Human-in-the-loop** (e2e_template, sam_cvat): a human reviews and marks tasks completed before
    the pipeline advances.
 

@@ -19,69 +19,20 @@ LABEL_STUDIO_S3_ENDPOINT_URL = os.environ.get("LABEL_STUDIO_S3_ENDPOINT_URL", S3
 LABEL_STUDIO_URL = os.environ.get("LABEL_STUDIO_URL", "")
 LABEL_STUDIO_API_KEY = os.environ.get("LABEL_STUDIO_API_KEY", "")
 
-PROJECT_NAME = "Datapipe keypoints e2e"
+PROJECT_NAME = "Datapipe classification e2e"
 LABEL_CONFIG = """
 <View>
   <Image name="image" value="$image_url"/>
-  <RectangleLabels name="bbox" toName="image">
-    <Label value="Person" background="#4ECDC4"/>
-  </RectangleLabels>
-  <KeyPointLabels name="kp" toName="image" smart="true" strokeWidth="0.5">
-    <Label value="nose" background="#1f77b4"/>
-    <Label value="left_eye" background="#ff7f0e"/>
-    <Label value="right_eye" background="#2ca02c"/>
-    <Label value="left_ear" background="#d62728"/>
-    <Label value="right_ear" background="#9467bd"/>
-    <Label value="left_shoulder" background="#8c564b"/>
-    <Label value="right_shoulder" background="#e377c2"/>
-    <Label value="left_elbow" background="#7f7f7f"/>
-    <Label value="right_elbow" background="#bcbd22"/>
-    <Label value="left_wrist" background="#17becf"/>
-    <Label value="right_wrist" background="#3182bd"/>
-    <Label value="left_hip" background="#9ecae1"/>
-    <Label value="right_hip" background="#e6550d"/>
-    <Label value="left_knee" background="#fd8d3c"/>
-    <Label value="right_knee" background="#31a354"/>
-    <Label value="left_ankle" background="#74c476"/>
-    <Label value="right_ankle" background="#756bb1"/>
-  </KeyPointLabels>
+  <Choices name="label" toName="image" choice="single" showInLine="true">
+    <Choice value="Has Animal" background="#4ECDC4"/>
+    <Choice value="No Animals" background="#FF6B6B"/>
+  </Choices>
 </View>
 """
 
-KEYPOINTS_LABELS = [
-    "nose",
-    "left_eye",
-    "right_eye",
-    "left_ear",
-    "right_ear",
-    "left_shoulder",
-    "right_shoulder",
-    "left_elbow",
-    "right_elbow",
-    "left_wrist",
-    "right_wrist",
-    "left_hip",
-    "right_hip",
-    "left_knee",
-    "right_knee",
-    "left_ankle",
-    "right_ankle",
-]
-COCO_PERSON_KEYPOINT_FLIP_IDX = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
-KEYPOINTS_CLASSES = ["Person"]
-CLASSES_TO_KEEP = set(KEYPOINTS_CLASSES)
-
-E2E_TEMPLATE_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_KEYPOINTS_MODEL_PATH = E2E_TEMPLATE_DIR / "sample_data" / "models" / "yolo11n-pose.pt"
-
-KEYPOINTS_MODEL_CONFIG = {
-    "keypoints_model_id": "person_yolo_pose_smoke",
-    "keypoints_model__type": "yolov8_pose",
-    "keypoints_model__model_path": str(DEFAULT_KEYPOINTS_MODEL_PATH),
-    "keypoints_model__input_size": [16, 16],
-    "keypoints_model__class_names": ["Person"],
-    "keypoints_model__score_threshold": 0.01,
-}
+CLASS_HAS_ANIMAL = "Has Animal"
+CLASS_NO_ANIMALS = "No Animals"
+CLASSIFICATION_CLASSES = [CLASS_HAS_ANIMAL, CLASS_NO_ANIMALS]
 
 
 def _is_cloud_path(path: str) -> bool:
@@ -89,6 +40,10 @@ def _is_cloud_path(path: str) -> bool:
     return protocol not in (None, "file")
 
 
+# Single root for everything this example reads/writes. Local path or s3:// URL.
+# Input images live under <root>/images and the pipeline working_dir under <root>/datapipe
+# (siblings) so the recursive image listing in steps.py never re-ingests resized crops or
+# other artifacts written under the working_dir.
 DATAPIPE_E2E_DIR = os.environ.get("DATAPIPE_E2E_DIR", "s3://datapipe-e2e").rstrip("/")
 INPUT_IMAGES_DIR = f"{DATAPIPE_E2E_DIR}/images"
 
@@ -170,7 +125,7 @@ if not DB_URL:
         "start docker compose, and run: set -a && source .env && set +a"
     )
 
-DB_SCHEMA = os.environ.get("DB_SCHEMA_KEYPOINTS", "datapipe_e2e_keypoints")
+DB_SCHEMA = os.environ.get("DB_SCHEMA_CLASSIFICATION", "datapipe_e2e_classification")
 DBCONN = DBConn(DB_URL, DB_SCHEMA)
 
 CLICKHOUSE_RUN_LOGS_URL = os.environ.get("CLICKHOUSE_RUN_LOGS_URL")
@@ -190,29 +145,22 @@ def _use_gpu() -> bool:
     if explicit is not None:
         return explicit.strip().lower() not in {"0", "false", "no", "off"}
     try:
-        import torch
+        import tensorflow as tf
 
-        return torch.cuda.is_available()
+        return bool(tf.config.list_physical_devices("GPU"))
     except Exception:
         return False
 
 
 def parallel_io_executor(*, parallelism_cap: int = 16, cpu_per_task: float = 0.2) -> ExecutorConfig:
-    """Embarrassingly parallel I/O and image prep (resize, download, upload)."""
+    """Embarrassingly parallel I/O and image prep (download, upload)."""
     return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
 
 
 def gpu_executor(*, parallelism: int | None = None) -> ExecutorConfig:
-    """GPU when CUDA is available; CPU fallback otherwise."""
+    """GPU when TensorFlow sees a CUDA device; CPU fallback otherwise."""
     if _use_gpu():
-        if parallelism is None:
-            try:
-                import torch
-
-                parallelism = max(1, torch.cuda.device_count())
-            except Exception:
-                parallelism = 1
-        return ExecutorConfig(gpu=1, cpu=1.0, parallelism=parallelism)
+        return ExecutorConfig(gpu=1, cpu=1.0, parallelism=parallelism or 1)
     return ExecutorConfig(cpu=1.0, parallelism=min(_MAX_CPU, 4))
 
 
@@ -220,4 +168,5 @@ def metrics_executor(*, parallelism_cap: int = 8, cpu_per_task: float = 0.5) -> 
     """CPU-bound metrics aggregation over image batches."""
     return ExecutorConfig(cpu=cpu_per_task, parallelism=min(_MAX_CPU, parallelism_cap))
 
-FIFTYONE_DATASET_NAME = "datapipe_keypoints_e2e"
+
+FIFTYONE_DATASET_NAME = "datapipe_classification_e2e"

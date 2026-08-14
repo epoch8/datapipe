@@ -374,6 +374,8 @@ def run_steps(
     run_config: RunConfig | None = None,
     executor: Executor | None = None,
 ) -> None:
+    from datapipe.cancel import get_cancel_token
+
     callback = run_config.callback if run_config is not None else None
 
     if callback is not None:
@@ -381,6 +383,10 @@ def run_steps(
 
     try:
         for step in steps:
+            token = get_cancel_token()
+            if token is not None:
+                token.raise_if_cancelled()
+
             if callback is not None:
                 callback.on_step_start(step)
 

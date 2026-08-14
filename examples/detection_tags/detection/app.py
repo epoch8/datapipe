@@ -1,9 +1,38 @@
 from __future__ import annotations
 
-from datapipe.compute import DatapipeApp, Pipeline
+import os
+
+# Deterministic training: cuBLAS needs CUBLAS_WORKSPACE_CONFIG set BEFORE torch/CUDA init, so set it
+# here at the entrypoint — the train subprocess inherits it. Pairs with seed + deterministic=True in
+# YoloV8_TrainingConfig to keep model-A / model-B metrics reproducible run-to-run on the same GPU.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
+from datapipe.compute import Pipeline
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.types import Required
+from datapipe_app import DatapipeAPI, RunLogsBackend
+from datapipe_app.ops.specs import (
+    OpsColumn,
+    OpsColumnGroup,
+    OpsFilterRule,
+    OpsMetricTableSpec,
+    OpsRelationSpec,
+)
+from datapipe_app_ml_ops.ops.ops_specs import (
+    DatapipeOpsSpec,
+    OpsClassMetricTableSpec,
+    OpsDataSpec,
+    OpsImageAnnotationSpec,
+    OpsImageDataSpec,
+    OpsImagePredictionViewSpec,
+    OpsImageRecordViewSpec,
+    OpsFrozenDatasetSpec,
+    OpsModelSpec,
+    OpsTrainConfigRegistrySpec,
+    OpsTrainingRequestSpec,
+    OpsTrainingSpec,
+)
 from datapipe_ml.metrics.model_selection import FindBestModel
 from datapipe_ml.tasks.detection.freeze import DetectionFreezeDataset
 from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
@@ -14,6 +43,7 @@ from datapipe_ml.workflows.detection_classification.metrics import CountMetrics_
 
 import steps
 from config import (
+    CLICKHOUSE_RUN_LOGS_URL,
     DATAPIPE_DIR,
     DBCONN,
     datapipe_tmp_folder,
@@ -229,6 +259,449 @@ pipeline = Pipeline(
     ]
 )
 
-
 ds = DataStore(DBCONN)
-app = DatapipeApp(ds, catalog, pipeline)
+app = DatapipeAPI(
+    ds,
+    catalog,
+    pipeline,
+    run_logs_backend=RunLogsBackend.clickhouse(CLICKHOUSE_RUN_LOGS_URL),
+)
+
+app.add_specs([
+    DatapipeOpsSpec(
+        id="cat_dog",
+        title="Cat/Dog Detection",
+        description="YOLO training pipeline over frozen image snapshots.",
+        icon="shield",
+        color="blue",
+        data=OpsDataSpec(
+            tables=[
+                "s3_images",
+                "image__ground_truth",
+                "image__subset",
+                "tag",
+                "image__tag",
+                "detection_frozen_dataset",
+                "detection_model_train",
+                "pipeline_model__metrics_on_subset",
+                "pipeline_model__metrics_by_cls_on_subset",
+                "pipeline_model__metrics_by_tag_on_subset",
+                "pipeline_model__metrics_by_tag_by_cls_on_subset",
+            ],
+            item_table="s3_images",
+            label_table="image__ground_truth",
+            subset_table="image__subset",
+            image_view=OpsImageDataSpec(
+                kind="image",
+                image_table="s3_images",
+                image_primary_key_columns=("image_name",),
+                image_url_column="image_url",
+                subset_table="image__subset",
+                subset_join_columns={"image_name": "image_name"},
+                subset_column="subset_id",
+                records_show_subset=True,
+                ground_truth=OpsImageAnnotationSpec(
+                    table="image__ground_truth",
+                    primary_key_columns=("image_name",),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    join_columns={"image_name": "image_name"},
+                    role="gt",
+                ),
+                records_show_ground_truth=True,
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+        ),
+        frozen_dataset=OpsFrozenDatasetSpec(
+            table="detection_frozen_dataset",
+            id_column="detection_frozen_dataset_id",
+            created_at_column="detection_frozen_dataset__created_at",
+            label_mode="timestamp",
+            split_columns={
+                "train": "detection_frozen_dataset__train_images_count",
+                "val": "detection_frozen_dataset__val_images_count",
+                "test": "detection_frozen_dataset__test_images_count",
+            },
+            models_count_relation_id="model_trained_on_frozen_dataset",
+            record_view=OpsImageRecordViewSpec(
+                kind="image",
+                table="detection_frozen_dataset__has__image_gt",
+                scope_column="detection_frozen_dataset_id",
+                primary_key_columns=("image_name", "subset_id"),
+                image_url_column="image__image_path",
+                bboxes_column="bboxes",
+                labels_column="labels",
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+            columns=[
+                OpsColumn(
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    kind="link",
+                    link_to="frozen_dataset",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "created_at",
+                    "Frozen at",
+                    "detection_frozen_dataset__created_at",
+                    kind="datetime",
+                    filterable=True,
+                ),
+                OpsColumn("split", "Split", "split", kind="split"),
+                OpsColumn("models", "Models", "models_count", kind="models_count"),
+            ],
+            default_sort=[("created_at", "desc")],
+            run_labels=[("stage", "train-prepare")],
+        ),
+        model=OpsModelSpec(
+            table="detection_model_train",
+            id_column="detection_model_id",
+            artifact_uri_column="detection_model__model_path",
+            is_best_table="attr__detection_model__is_best",
+            is_best_column="detection_model__is_best",
+            prediction_view=OpsImagePredictionViewSpec(
+                kind="image",
+                table="detection_prediction_train",
+                model_id_column="detection_model_id",
+                image_primary_key_columns=("image_name",),
+                image_url_table="s3_images",
+                image_url_column="image_url",
+                image_url_join_columns={"image_name": "image_name"},
+                prediction=OpsImageAnnotationSpec(
+                    table="detection_prediction_train",
+                    primary_key_columns=("image_name", "detection_model_id"),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    scores_column="prediction__detection_scores",
+                    role="prediction",
+                ),
+                ground_truth=OpsImageAnnotationSpec(
+                    table="image__ground_truth",
+                    primary_key_columns=("image_name",),
+                    bboxes_column="bboxes",
+                    labels_column="labels",
+                    join_columns={"image_name": "image_name"},
+                    role="gt",
+                ),
+                subset_table="image__subset",
+                subset_join_columns={"image_name": "image_name"},
+                subset_column="subset_id",
+                metrics_on_image=OpsMetricTableSpec(
+                    id="prediction_image_metrics",
+                    title="Per-image metrics",
+                    table="pipeline_model__metrics_on_image",
+                    metric_source="pipeline_model__metrics_on_image",
+                    primary_key_columns=["image_name", "detection_model_id", "subset_id", "label"],
+                    entity_links={},
+                    primary_columns=[],
+                    metric_columns=[
+                        OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
+                        OpsColumn("tp", "TP", "calc__TP", kind="number"),
+                        OpsColumn("fp", "FP", "calc__FP", kind="number"),
+                        OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                        OpsColumn("fp_extra", "FP (extra bbox)", "calc__FP_extra_bbox", kind="number"),
+                        OpsColumn("tp_extra", "TP (extra bbox)", "calc__TP_extra_bbox", kind="number"),
+                    ],
+                ),
+                preview_size=84,
+                modal_max_side=1100,
+                detail_max_side=1600,
+            ),
+        ),
+        training=OpsTrainingSpec(
+            status_table="detection_training_status",
+            artifact_columns={
+                "manifest": "training_status__manifest_path",
+                "run_dir": "training_status__run_dir",
+            },
+            columns=[
+                OpsColumn(
+                    "run_id",
+                    "Run ID",
+                    "training_status__run_key",
+                    kind="link",
+                    link_to="training_run",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "detection_model_id",
+                    "detection_model_id",
+                    "detection_model_id",
+                    kind="link",
+                    link_to="model",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    "detection_frozen_dataset_id",
+                    kind="link",
+                    link_to="frozen_dataset",
+                    filterable=True,
+                ),
+                OpsColumn(
+                    "started_at",
+                    "Started",
+                    "training_status__started_at",
+                    kind="datetime",
+                    filterable=True,
+                ),
+                OpsColumn("duration", "Duration", "duration_seconds", kind="duration"),
+                OpsColumn(
+                    "status",
+                    "Status",
+                    "training_status__status",
+                    kind="status",
+                    filterable=True,
+                ),
+            ],
+            default_sort=[("started_at", "desc")],
+            experiments=OpsTrainConfigRegistrySpec(
+                table="yolov8_custom_train_config",
+                default_table="yolov8_train_config",
+                id_column="detection_train_config_id",
+                params_column="detection_train_config__params",
+                source_column="train_config__source",
+                display_name_column="train_config__display_name",
+                description_column="train_config__description",
+                config_type_column="train_config__config_type",
+                hash_column="train_config__config_hash",
+                active_column="train_config__is_active",
+                created_at_column="train_config__created_at",
+                updated_at_column="train_config__updated_at",
+                revision_column="train_config__revision",
+                config_type="yolov8_detection",
+            ),
+            requests=OpsTrainingRequestSpec(
+                table="detection_training_request",
+                id_column="training_request_id",
+                frozen_dataset_id_column="detection_frozen_dataset_id",
+                train_config_id_column="detection_train_config_id",
+                kind_column="training_request__kind",
+                enabled_column="training_request__enabled",
+                force_column="training_request__force",
+                max_within_time_column="training_request__max_within_time",
+                max_within_time="1w",
+                config_source_column="training_request__config_source",
+                config_name_snapshot_column="training_request__config_name_snapshot",
+                config_params_snapshot_column="training_request__config_params_snapshot",
+                config_hash_column="training_request__config_hash",
+                requested_at_column="training_request__requested_at",
+                requested_by_column="training_request__requested_by",
+                client_request_id_column="training_request__client_request_id",
+                status_table="detection_training_status",
+                status_request_id_column="training_request_id",
+                run_labels=[
+                    ("stage", "train-without-freeze"),
+                ],
+            ),
+        ),
+        relations=[
+            OpsRelationSpec(
+                id="model_trained_on_frozen_dataset",
+                table="detection_model_is_trained_on_detection_frozen_dataset",
+                from_entity="model",
+                from_column="detection_model_id",
+                to_entity="frozen_dataset",
+                to_column="detection_frozen_dataset_id",
+            )
+        ],
+        metrics=[
+            OpsMetricTableSpec(
+                id="model_metrics",
+                title="Model metrics",
+                table="pipeline_model__metrics_on_subset",
+                metric_source="pipeline_model__metrics_on_subset",
+                primary_key_columns=["detection_model_id", "subset_id"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                },
+                primary_columns=[
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumnGroup(
+                        "Precision",
+                        [
+                            OpsColumn("weighted_precision", "W-Precision", "calc__weighted_precision", kind="number"),
+                            OpsColumn("macro_precision", "M-Precision", "calc__macro_precision", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Recall",
+                        [
+                            OpsColumn("weighted_recall", "W-Recall", "calc__weighted_recall", kind="number"),
+                            OpsColumn("macro_recall", "M-Recall", "calc__macro_recall", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "F1",
+                        [
+                            OpsColumn("weighted_f1", "W-F1", "calc__weighted_f1_score", kind="number"),
+                            OpsColumn("macro_f1", "M-F1", "calc__macro_f1_score", kind="number"),
+                        ],
+                    ),
+                    OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                ],
+                best_metric_column="calc__weighted_f1_score",
+                default_sort=[("weighted_f1", "desc")],
+                filters=[OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True)],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+            OpsMetricTableSpec(
+                id="tag_metrics_on_subset",
+                title="Tag metrics on subset",
+                table="pipeline_model__metrics_by_tag_on_subset",
+                metric_source="pipeline_model__metrics_by_tag_on_subset",
+                primary_key_columns=["detection_model_id", "tag_id", "subset_id"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                    "tag": "tag_id",
+                },
+                primary_columns=[
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("tag_id", "tag_id", "tag_id", filterable=True),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumnGroup(
+                        "Precision",
+                        [
+                            OpsColumn("weighted_precision", "W-Precision", "calc__weighted_precision", kind="number"),
+                            OpsColumn("macro_precision", "M-Precision", "calc__macro_precision", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "Recall",
+                        [
+                            OpsColumn("weighted_recall", "W-Recall", "calc__weighted_recall", kind="number"),
+                            OpsColumn("macro_recall", "M-Recall", "calc__macro_recall", kind="number"),
+                        ],
+                    ),
+                    OpsColumnGroup(
+                        "F1",
+                        [
+                            OpsColumn("weighted_f1", "W-F1", "calc__weighted_f1_score", kind="number"),
+                            OpsColumn("macro_f1", "M-F1", "calc__macro_f1_score", kind="number"),
+                        ],
+                    ),
+                    OpsColumn("accuracy", "Accuracy", "calc__accuracy", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                ],
+                best_metric_column="calc__weighted_f1_score",
+                default_sort=[("weighted_f1", "desc")],
+                filters=[
+                    OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("tag_filter", "tag_id", "tag_id", filterable=True),
+                ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+        ],
+        class_metrics=[
+            OpsClassMetricTableSpec(
+                id="subset_class_metrics",
+                title="Subset class metrics",
+                table="pipeline_model__metrics_by_cls_on_subset",
+                metric_source="pipeline_model__metrics_by_cls_on_subset",
+                primary_key_columns=["detection_model_id", "subset_id", "label"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                    "class": "label",
+                },
+                primary_columns=[
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("label", "Class", "label", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumn("precision", "Precision", "calc__precision", kind="number"),
+                    OpsColumn("recall", "Recall", "calc__recall", kind="number"),
+                    OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                    OpsColumn("tp", "TP", "calc__TP", kind="number"),
+                    OpsColumn("fp", "FP", "calc__FP", kind="number"),
+                    OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                ],
+                best_metric_column="calc__f1_score",
+                default_sort=[("f1", "desc")],
+                filters=[
+                    OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("class_filter", "Class", "label", filterable=True),
+                ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+            OpsClassMetricTableSpec(
+                id="tag_class_metrics_on_subset",
+                title="Tag class metrics on subset",
+                table="pipeline_model__metrics_by_tag_by_cls_on_subset",
+                metric_source="pipeline_model__metrics_by_tag_by_cls_on_subset",
+                primary_key_columns=["detection_model_id", "tag_id", "subset_id", "label"],
+                entity_links={
+                    "model": "detection_model_id",
+                    "subset": "subset_id",
+                    "tag": "tag_id",
+                    "class": "label",
+                },
+                primary_columns=[
+                    OpsColumn(
+                        "detection_model_id",
+                        "detection_model_id",
+                        "detection_model_id",
+                        filterable=True,
+                        link_to="model",
+                    ),
+                    OpsColumn("tag_id", "tag_id", "tag_id", filterable=True),
+                    OpsColumn("subset_id", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("label", "Class", "label", filterable=True),
+                ],
+                metric_columns=[
+                    OpsColumn("precision", "Precision", "calc__precision", kind="number"),
+                    OpsColumn("recall", "Recall", "calc__recall", kind="number"),
+                    OpsColumn("f1", "F1", "calc__f1_score", kind="number"),
+                    OpsColumn("support", "Support", "calc__support", kind="number"),
+                    OpsColumn("tp", "TP", "calc__TP", kind="number"),
+                    OpsColumn("fp", "FP", "calc__FP", kind="number"),
+                    OpsColumn("fn", "FN", "calc__FN", kind="number"),
+                ],
+                best_metric_column="calc__f1_score",
+                default_sort=[("f1", "desc")],
+                filters=[
+                    OpsColumn("subset_filter", "subset_id", "subset_id", kind="chip", filterable=True),
+                    OpsColumn("tag_filter", "tag_id", "tag_id", filterable=True),
+                    OpsColumn("class_filter", "Class", "label", filterable=True),
+                ],
+                default_filters=[OpsFilterRule(column_id="subset_id", operator="equal", value="val")],
+            ),
+        ],
+        tags=["yolo", "image", "tags", "training"],
+    ),
+])
