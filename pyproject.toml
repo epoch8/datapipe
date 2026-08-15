@@ -17,6 +17,10 @@ ignore_missing_imports = true
 follow_imports = "silent"
 namespace_packages = true
 
+[tool.ty.rules]
+unused-type-ignore-comment = "ignore"
+redundant-cast = "ignore"
+
 [dependency-groups]
 dev = [
     "ty>=0.0.65",
