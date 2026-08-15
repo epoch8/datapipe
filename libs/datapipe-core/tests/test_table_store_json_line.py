@@ -21,7 +21,7 @@ from sqlalchemy import (
     UnicodeText,
 )
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
@@ -101,25 +101,23 @@ def test_table_store_json_line_with_deleting(dbconn, tmp_dir):
             ),
         }
     )
-    pipeline = Pipeline(
-        [
-            UpdateExternalTable("input_data"),
-            BatchTransform(lambda df: df, inputs=["input_data"], outputs=["transfomed_data"]),
-        ]
-    )
+    pipeline = [
+        UpdateExternalTable("input_data"),
+        BatchTransform(lambda df: df, inputs=["input_data"], outputs=["transfomed_data"]),
+    ]
 
     # Create data, pipeline it
     make_file1(input_file)
 
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    app = DatapipeApp(ds, catalog, pipeline)
+    app.run()
 
     assert len(catalog.get_datatable(ds, "input_data").get_data()) == 3
     assert len(catalog.get_datatable(ds, "transfomed_data").get_data()) == 3
 
     # Remove {"id": "0"} from file, pipeline it
     make_file2(input_file)
-    run_steps(ds, steps)
+    app.run()
 
     # TODO: uncomment follow when we make files deletion
     # assert len(list(tmp_dir.glob('tbl2/*.png'))) == 2
@@ -197,17 +195,14 @@ def test_table_store_json_line_with_dtype_mapping(dbconn, tmp_dir):
             ),
         }
     )
-    pipeline = Pipeline(
-        [
-            UpdateExternalTable("input_dtypes"),
-            BatchTransform(lambda df: df, inputs=["input_dtypes"], outputs=["transfomed_dtypes"]),
-        ]
-    )
+    pipeline = [
+        UpdateExternalTable("input_dtypes"),
+        BatchTransform(lambda df: df, inputs=["input_dtypes"], outputs=["transfomed_dtypes"]),
+    ]
 
     make_dtypes_file(tmp_dir / "dtypes.json")
 
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    DatapipeApp(ds, catalog, pipeline).run()
 
     assert len(catalog.get_datatable(ds, "input_dtypes").get_data()) == 3
     assert len(catalog.get_datatable(ds, "transfomed_dtypes").get_data()) == 3

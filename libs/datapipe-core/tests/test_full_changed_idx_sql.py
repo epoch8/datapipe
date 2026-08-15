@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import String
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import TableStoreDB
@@ -86,18 +86,17 @@ def test_check_full_step_idx_count_when_some_idxs_are_deleted(dbconn):
         df__output = pd.merge(df__item[["item_id"]], df__pipeline[["pipeline_id"]], how="cross")
         return df__output[["item_id", "pipeline_id"]]
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                func=complex_function,
-                inputs=["item", "item2", "pipeline"],
-                outputs=["output"],
-                transform_keys=["item_id", "pipeline_id"],
-                chunk_size=50,
-            ),
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
+    pipeline = [
+        BatchTransform(
+            func=complex_function,
+            inputs=["item", "item2", "pipeline"],
+            outputs=["output"],
+            transform_keys=["item_id", "pipeline_id"],
+            chunk_size=50,
+        ),
+    ]
+    app = DatapipeApp(ds, catalog, pipeline)
+    steps = app.steps
     step = steps[-1]
     ds.get_table("item").store_chunk(TEST__ITEM)
     ds.get_table("item2").store_chunk(TEST__ITEM2)
@@ -112,5 +111,5 @@ def test_check_full_step_idx_count_when_some_idxs_are_deleted(dbconn):
         TEST__ITEM2.iloc[5:],
         TEST__PIPELINE,
     )
-    run_steps(ds, steps)
+    app.run()
     assert_datatable_equal(ds.get_table("output"), TEST_RESULT)

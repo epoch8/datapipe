@@ -6,9 +6,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from datapipe.compute import ComputeStep, run_steps
+from datapipe.compute import Catalog, ComputeStep, DatapipeApp
 from datapipe.run_callback import CompositeRunCallback, RunCallback
 from datapipe.run_config import RunConfig
+
+
+def _app(ds) -> DatapipeApp:
+    return DatapipeApp(ds, Catalog({}), [])
 
 
 @dataclass
@@ -109,7 +113,7 @@ def test_run_steps_notifies_callbacks_in_order():
     cb1 = RecordingCallback()
     cb2 = RecordingCallback()
 
-    run_steps(ds, steps, run_config=_run_config_with_callbacks(cb1, cb2))
+    _app(ds).run(steps=steps, run_config=_run_config_with_callbacks(cb1, cb2))
 
     expected = [
         ("run_start", ["a", "b"]),
@@ -126,7 +130,7 @@ def test_run_steps_notifies_callbacks_in_order():
 def test_run_steps_supports_multiple_callbacks():
     ds = MagicMock()
     cbs = [RecordingCallback(), RecordingCallback(), RecordingCallback()]
-    run_steps(ds, [FakeStep("only")], run_config=_run_config_with_callbacks(*cbs))
+    _app(ds).run(steps=[FakeStep("only")], run_config=_run_config_with_callbacks(*cbs))
     assert all(cb.events[-1] == ("run_success",) for cb in cbs)
 
 
@@ -136,7 +140,7 @@ def test_run_steps_records_step_failure():
     cb = RecordingCallback()
 
     with pytest.raises(RuntimeError, match="bad failed"):
-        run_steps(ds, steps, run_config=_run_config_with_callbacks(cb))
+        _app(ds).run(steps=steps, run_config=_run_config_with_callbacks(cb))
 
     assert ("step_error", "bad", "RuntimeError", "bad failed") in cb.events
     assert ("run_error", "RuntimeError", "bad failed") in cb.events
@@ -149,9 +153,8 @@ def test_callback_error_does_not_mask_step_error():
     good = RecordingCallback()
 
     with pytest.raises(RuntimeError, match="bad failed"):
-        run_steps(
-            ds,
-            [FakeStep("bad", fail=True)],
+        _app(ds).run(
+            steps=[FakeStep("bad", fail=True)],
             run_config=_run_config_with_callbacks(exploding, good),
         )
 
@@ -163,7 +166,7 @@ def test_callback_error_on_success_is_swallowed():
     ds = MagicMock()
     exploding = ExplodingCallback(explode_on="on_run_success")
     # Pipeline itself must still complete without raising.
-    run_steps(ds, [FakeStep("ok")], run_config=_run_config_with_callbacks(exploding))
+    _app(ds).run(steps=[FakeStep("ok")], run_config=_run_config_with_callbacks(exploding))
     assert "on_run_success" in exploding.events
 
 
@@ -171,7 +174,7 @@ def test_run_config_is_passed_with_callback():
     ds = MagicMock()
     step = FakeStep("p")
     cfg = RunConfig(labels={"k": "v"}, callback=RecordingCallback())
-    run_steps(ds, [step], run_config=cfg)
+    _app(ds).run(steps=[step], run_config=cfg)
     assert step.run_config_seen is cfg
 
 
@@ -179,7 +182,7 @@ def test_progress_is_forwarded():
     ds = MagicMock()
     step = FakeStep("p", report_progress=True)
     cb = RecordingCallback()
-    run_steps(ds, [step], run_config=_run_config_with_callbacks(cb))
+    _app(ds).run(steps=[step], run_config=_run_config_with_callbacks(cb))
     assert ("step_progress", "p", 0, 2) in cb.events
     assert ("step_progress", "p", 2, 2) in cb.events
 
@@ -187,7 +190,7 @@ def test_progress_is_forwarded():
 def test_empty_steps_complete_run():
     ds = MagicMock()
     cb = RecordingCallback()
-    run_steps(ds, [], run_config=_run_config_with_callbacks(cb))
+    _app(ds).run(steps=[], run_config=_run_config_with_callbacks(cb))
     assert cb.events == [
         ("run_start", []),
         ("run_success",),

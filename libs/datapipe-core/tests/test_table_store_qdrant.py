@@ -6,7 +6,7 @@ from qdrant_client.models import Distance, VectorParams
 from sqlalchemy import ARRAY, Float, Integer, String
 from sqlalchemy.sql.schema import Column
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -64,15 +64,12 @@ def test_qdrant_table_to_json(dbconn: DBConn, tmp_dir: Path) -> None:
         }
     )
 
-    pipeline = Pipeline(
-        [
-            BatchGenerate(generate_data, outputs=["input"]),
-            BatchTransform(extract_id, inputs=["input"], outputs=["output"]),
-        ]
-    )
+    pipeline = [
+        BatchGenerate(generate_data, outputs=["input"]),
+        BatchTransform(extract_id, inputs=["input"], outputs=["output"]),
+    ]
 
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    DatapipeApp(ds, catalog, pipeline).run()
 
     assert len(catalog.get_datatable(ds, "input").get_data()) == 1
 

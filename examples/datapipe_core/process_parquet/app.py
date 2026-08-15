@@ -4,7 +4,7 @@ from typing import Generator
 import pandas as pd
 import sqlalchemy as sa
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -54,17 +54,15 @@ def batch_preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-pipeline = Pipeline(
-    [
-        BatchGenerate(batch_generate_df, outputs=[input_dfs_tbl]),
-        BatchTransform(
-            batch_preprocess_df,
-            inputs=[input_dfs_tbl],
-            outputs=[output_dfs_tbl],
-            chunk_size=100,
-        ),
-    ]
-)
+pipeline = [
+    BatchGenerate(batch_generate_df, outputs=[input_dfs_tbl]),
+    BatchTransform(
+        batch_preprocess_df,
+        inputs=[input_dfs_tbl],
+        outputs=[output_dfs_tbl],
+        chunk_size=100,
+    ),
+]
 
 
 ds = DataStore(DBConn(sqlite_connstr()))

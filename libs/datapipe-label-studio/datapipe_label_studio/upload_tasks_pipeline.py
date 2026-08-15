@@ -9,10 +9,9 @@ from datapipe.compute import (
     Catalog,
     ComputeStep,
     DataStore,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataTable
 from datapipe.executor import ExecutorConfig
@@ -413,7 +412,9 @@ class LabelStudioUploadTasks(PipelineStep):
             output_label_studio_project_annotation_name, Table(dt__output__label_studio_project_annotation.table_store)
         )
 
-        pipeline = Pipeline(
+        return DatapipeApp(
+            ds,
+            catalog,
             [
                 BatchTransform(
                     labels=self.labels,
@@ -443,9 +444,8 @@ class LabelStudioUploadTasks(PipelineStep):
                         dt__output__label_studio_project_task=dt__output__label_studio_project_task,
                     ),
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+            ],
+        ).steps
 
 
 def upload_tasks_to_label_studio_projects(
@@ -620,7 +620,9 @@ class LabelStudioUploadTasksToProjects(PipelineStep):
             output_label_studio_project_annotation_name, Table(dt__output__label_studio_project_annotation.table_store)
         )
 
-        pipeline = Pipeline(
+        return DatapipeApp(
+            ds,
+            catalog,
             [
                 BatchTransform(
                     labels=self.labels,
@@ -651,6 +653,5 @@ class LabelStudioUploadTasksToProjects(PipelineStep):
                         dt__output__label_studio_project_task=dt__output__label_studio_project_task,
                     ),
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+            ],
+        ).steps

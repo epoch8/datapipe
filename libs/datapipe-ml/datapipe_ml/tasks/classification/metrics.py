@@ -6,10 +6,9 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import ExecutorConfig
@@ -539,10 +538,9 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
         )
 
         ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=wrap_ground_truth_inputs(
+        pipeline = [
+            BatchTransform(
+                func=wrap_ground_truth_inputs(
                         count_classification_metrics_on_image,
                         n_ground_truth_inputs=len(ground_truth_inputs),
                         primary_keys=self.primary_keys,
@@ -581,5 +579,4 @@ class CountMetrics_Subset_ClassificationModel(PipelineStep):
                     chunk_size=1,
                 ),
             ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        return DatapipeApp(ds, catalog, pipeline).steps

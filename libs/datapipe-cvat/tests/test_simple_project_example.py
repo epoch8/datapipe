@@ -10,7 +10,6 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 from cvat_sdk.models import LabeledDataRequest, LabeledShapeRequest
-from datapipe.compute import run_steps
 from datapipe_cvat.cvat_step import create_cvat_client
 from PIL import Image
 
@@ -81,7 +80,7 @@ def test_simple_project_roundtrips_completed_cvat_annotations(tmp_dir, cvat_url,
             app = app_module.app
             app.ds.meta_dbconn.sqla_metadata.create_all(app.ds.meta_dbconn.con)
 
-            run_steps(app.ds, app.steps)
+            app.run()
 
             project = client.projects.retrieve(project_id)
             tasks = project.get_tasks()
@@ -107,7 +106,7 @@ def test_simple_project_roundtrips_completed_cvat_annotations(tmp_dir, cvat_url,
             task.set_annotations(LabeledDataRequest(version=0, tags=[], shapes=shapes, tracks=[]))
             task.get_jobs()[0].update({"state": "completed"})
 
-            run_steps(app.ds, app.steps)
+            app.run()
 
             annotations = app.ds.get_table("cvat_annotation").get_data().sort_values("image_id")
             assert len(annotations) == 5

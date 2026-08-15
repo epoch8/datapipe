@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import functions, select
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline
+from datapipe.compute import Catalog, DatapipeApp
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_generate import BatchGenerate
@@ -81,19 +81,17 @@ def count_tbl(
         )
 
 
-pipeline = Pipeline(
-    [
-        BatchGenerate(
-            generate_data,
-            outputs=[Input],
-        ),
-        DatatableBatchTransform(
-            count_tbl,
-            inputs=[Input],
-            outputs=[Output],
-        ),
-    ]
-)
+pipeline = [
+    BatchGenerate(
+        generate_data,
+        outputs=[Input],
+    ),
+    DatatableBatchTransform(
+        count_tbl,
+        inputs=[Input],
+        outputs=[Output],
+    ),
+]
 
 
 dbconn = DBConn(sqlite_connstr(), sqla_metadata=Base.metadata)

@@ -53,10 +53,10 @@ def _store_base_inputs(ds, catalog, smoke_dataset):
 
 
 def _run_single_step(ds, catalog, step):
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
-    steps = build_compute(ds, catalog, Pipeline([step]))
-    run_steps(ds, steps)
+    app = DatapipeApp(ds, catalog, [step])
+    app.run()
 
 
 def _assert_frozen_dataset(ds, model_type: str, frozen_dataset_table: str, has_gt_table: str, image_count: int):

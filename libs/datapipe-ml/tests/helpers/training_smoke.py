@@ -22,11 +22,9 @@ import pandas as pd
 import fsspec
 from datapipe.compute import (
     Catalog,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
-    run_steps,
 )
 from datapipe.datatable import DataStore
 from datapipe.store.database import DBConn, TableStoreDB
@@ -307,8 +305,8 @@ def store_frames(ds: DataStore, catalog: Catalog, frames: Iterable[pd.DataFrame]
 
 
 def run_pipeline(runtime: SmokeRuntime, steps: Iterable[PipelineStep]) -> None:
-    compute_steps = build_compute(runtime.ds, runtime.catalog, Pipeline(list(steps)))
-    run_steps(runtime.ds, compute_steps)
+    app = DatapipeApp(runtime.ds, runtime.catalog, list(steps))
+    app.run()
 
 
 def assert_model_artifact(

@@ -8,10 +8,9 @@ from datapipe.compute import (
     Catalog,
     ComputeStep,
     DataStore,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataTable
 from datapipe.executor import ExecutorConfig
@@ -383,7 +382,9 @@ class LabelStudioUploadPredictions(PipelineStep):
             self.create_table,
         )
 
-        pipeline = Pipeline(
+        return DatapipeApp(
+            ds,
+            catalog,
             [
                 BatchTransform(
                     labels=self.labels,
@@ -413,9 +414,8 @@ class LabelStudioUploadPredictions(PipelineStep):
                         model_keys=self.model_keys,
                     ),
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+            ],
+        ).steps
 
 
 def upload_prediction_to_label_studio_projects(
@@ -555,7 +555,9 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
             self.create_table,
         )
 
-        pipeline = Pipeline(
+        return DatapipeApp(
+            ds,
+            catalog,
             [
                 BatchTransform(
                     labels=self.labels,
@@ -589,6 +591,5 @@ class LabelStudioUploadPredictionsToProjects(PipelineStep):
                     ),
                     transform_keys=["project_identifier"],
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+            ],
+        ).steps

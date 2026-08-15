@@ -7,10 +7,9 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import ExecutorConfig
@@ -544,61 +543,59 @@ class Train_Tensorflow_ClassificationModel(PipelineStep):
             ),
         )
         # ---
-        pipeline = Pipeline(
-            [
-                build_default_train_config_generate(
-                    func=get_tf_classification_train_configs,
-                    default_train_config_table=default_train_config,
-                    kwargs=dict(tf_classification_train_configs=self.tf_classification_train_configs),
-                    labels=self.labels,
-                ),
-                build_auto_experiment_request_transform(
-                    frozen_dataset_table=get_pipeline_table_name(self.input__classification_frozen_dataset),
-                    default_train_config_table=default_train_config,
-                    train_experiment_request_table=training_request,
-                    frozen_dataset_id_col=self.classification_frozen_dataset_id__name,
-                    train_config_id_col="classification_train_config_id",
-                    train_config_params_col="classification_train_config__params",
-                    train_config_type="tf_classification",
+        pipeline = [
+            build_default_train_config_generate(
+                func=get_tf_classification_train_configs,
+                default_train_config_table=default_train_config,
+                kwargs=dict(tf_classification_train_configs=self.tf_classification_train_configs),
+                labels=self.labels,
+            ),
+            build_auto_experiment_request_transform(
+                frozen_dataset_table=get_pipeline_table_name(self.input__classification_frozen_dataset),
+                default_train_config_table=default_train_config,
+                train_experiment_request_table=training_request,
+                frozen_dataset_id_col=self.classification_frozen_dataset_id__name,
+                train_config_id_col="classification_train_config_id",
+                train_config_params_col="classification_train_config__params",
+                train_config_type="tf_classification",
+                max_within_time=self.max_within_time,
+                labels=self.labels,
+            ),
+            DatatableBatchTransform(
+                func=train_tf_classification_model,
+                inputs=[
+                    self.input__classification_frozen_dataset,
+                    self.output__classification_training_request,
+                    self.input__classification_frozen_dataset__has__image_gt,
+                ],
+                outputs=[
+                    self.output__classification_model,
+                    self.output__classification_model_is_trained_on_cls_frozen_dataset,
+                    self.output__training_status,
+                ],
+                transform_keys=classification_model_other_primary_keys + ["training_request_id"],
+                chunk_size=1,
+                kwargs=dict(
+                    models_dir=str(Pathy.fluid(self.working_dir) / "models"),
                     max_within_time=self.max_within_time,
-                    labels=self.labels,
-                ),
-                DatatableBatchTransform(
-                    func=train_tf_classification_model,
-                    inputs=[
-                        self.input__classification_frozen_dataset,
-                        self.output__classification_training_request,
-                        self.input__classification_frozen_dataset__has__image_gt,
-                    ],
-                    outputs=[
-                        self.output__classification_model,
+                    dt__classification_model=get_datatable(ds, self.output__classification_model),
+                    dt__classification_model_is_trained_on_cls_frozen_dataset=get_datatable(
+                        ds,
                         self.output__classification_model_is_trained_on_cls_frozen_dataset,
-                        self.output__training_status,
-                    ],
-                    transform_keys=classification_model_other_primary_keys + ["training_request_id"],
-                    chunk_size=1,
-                    kwargs=dict(
-                        models_dir=str(Pathy.fluid(self.working_dir) / "models"),
-                        max_within_time=self.max_within_time,
-                        dt__classification_model=get_datatable(ds, self.output__classification_model),
-                        dt__classification_model_is_trained_on_cls_frozen_dataset=get_datatable(
-                            ds,
-                            self.output__classification_model_is_trained_on_cls_frozen_dataset,
-                        ),
-                        dt__training_status=get_datatable(ds, self.output__training_status),
-                        classification_model_other_primary_keys=classification_model_other_primary_keys,
-                        classification_model_id__name=self.classification_model_id__name,
-                        classification_frozen_dataset_id__name=self.classification_frozen_dataset_id__name,
-                        clean_checkpoints_after_train=self.clean_checkpoints_after_train,
-                        tmp_folder=self.tmp_folder,
-                        model_suffix=self.model_suffix,
-                        training_launcher_config=self.training_launcher_config,
-                        sync_config=self.sync_config,
-                        resume_config=self.resume_config,
                     ),
-                    labels=self.labels,
-                    executor_config=self.executor_config,
+                    dt__training_status=get_datatable(ds, self.output__training_status),
+                    classification_model_other_primary_keys=classification_model_other_primary_keys,
+                    classification_model_id__name=self.classification_model_id__name,
+                    classification_frozen_dataset_id__name=self.classification_frozen_dataset_id__name,
+                    clean_checkpoints_after_train=self.clean_checkpoints_after_train,
+                    tmp_folder=self.tmp_folder,
+                    model_suffix=self.model_suffix,
+                    training_launcher_config=self.training_launcher_config,
+                    sync_config=self.sync_config,
+                    resume_config=self.resume_config,
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+                labels=self.labels,
+                executor_config=self.executor_config,
+            ),
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps

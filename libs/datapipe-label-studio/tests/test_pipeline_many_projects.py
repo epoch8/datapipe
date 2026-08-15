@@ -1,13 +1,11 @@
 import string
-from typing import List
 
 import numpy as np
 import pandas as pd
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate, do_batch_generate
 from datapipe.step.batch_transform import BatchTransform
-from datapipe.step.datatable_transform import DatatableTransformStep
 from datapipe.store.database import TableStoreDB
 from label_studio_sdk import LabelStudio
 from pytest_cases import parametrize, parametrize_with_cases
@@ -221,9 +219,9 @@ class CasesLabelStudio:
             if include_predictions
             else []
         )
-        pipeline = Pipeline(main_steps + predictions_steps)
+        pipeline = main_steps + predictions_steps
 
-        steps = build_compute(ds, catalog, pipeline)
+        app = DatapipeApp(ds, catalog, pipeline)
         label_studio_session = LabelStudio(base_url=ls_url, api_key=api_key)
         wait_until_label_studio_is_up(label_studio_session)
         for project_title in ["project_identifier0", "project_identifier1"]:
@@ -234,7 +232,7 @@ class CasesLabelStudio:
         yield (
             ds,
             catalog,
-            steps,
+            app,
             include_preannotations,
             include_prepredictions,
             include_predictions,
@@ -251,7 +249,7 @@ class CasesLabelStudio:
 def ls_moderation_base_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    app: DatapipeApp,
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -259,8 +257,8 @@ def ls_moderation_base_many_projects(
     delete_unannotated_tasks_only_on_update: bool,
 ):
     # This should be ok (project will be created, but without data)
-    run_steps(ds, steps)
-    run_steps(ds, steps)
+    app.run()
+    app.run()
 
     # These steps should upload tasks
     do_batch_generate(
@@ -268,7 +266,7 @@ def ls_moderation_base_many_projects(
         ds=ds,
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
     for project_identifier in ["project_identifier0", "project_identifier1"]:
         idx_project = pd.DataFrame([{"project_identifier": project_identifier}])
@@ -294,7 +292,7 @@ def ls_moderation_base_many_projects(
         tasks_res = get_project_tasks(label_studio_session, project_id)
         assert len(tasks_res) == TASKS_COUNT
 
-        run_steps(ds, steps)
+        app.run()
 
         # Check that after second run no tasks are leaking
         tasks_res = get_project_tasks(label_studio_session, project_id)
@@ -323,7 +321,7 @@ def ls_moderation_base_many_projects(
                     was_cancelled=False,
                     task=task["id"],
                 )
-            run_steps(ds, steps)
+            app.run()
             idxs_df = pd.DataFrame.from_records({"id": [task["data"]["id"] for task in tasks[idxs]]})
             idxs_df["project_identifier"] = project_identifier
             df_annotation = ds.get_table("ls_output").get_data(idx=idxs_df)
@@ -363,14 +361,14 @@ def ls_moderation_base_many_projects(
 
 
 @parametrize_with_cases(
-    "ds, catalog, steps, include_preannotations, include_prepredictions, "
+    "ds, catalog, app, include_preannotations, include_prepredictions, "
     "include_predictions, label_studio_session, delete_unannotated_tasks_only_on_update",
     cases=CasesLabelStudio,
 )
 def test_ls_moderation_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    app: DatapipeApp,
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -380,7 +378,7 @@ def test_ls_moderation_many_projects(
     ls_moderation_base_many_projects(
         ds=ds,
         catalog=catalog,
-        steps=steps,
+        app=app,
         include_preannotations=include_preannotations,
         include_prepredictions=include_prepredictions,
         include_predictions=include_predictions,
@@ -390,14 +388,14 @@ def test_ls_moderation_many_projects(
 
 
 @parametrize_with_cases(
-    "ds, catalog, steps, include_preannotations, include_prepredictions, "
+    "ds, catalog, app, include_preannotations, include_prepredictions, "
     "include_predictions, label_studio_session, delete_unannotated_tasks_only_on_update",
     cases=CasesLabelStudio,
 )
 def test_ls_when_data_is_changed_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    app: DatapipeApp,
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -440,7 +438,7 @@ def test_ls_when_data_is_changed_many_projects(
         ds=ds,
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
     # These steps should delete old tasks and create new tasks
     do_batch_generate(
@@ -448,7 +446,7 @@ def test_ls_when_data_is_changed_many_projects(
         ds=ds,
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
     for project_identifier in ["project_identifier0", "project_identifier1"]:
         idx_project = pd.DataFrame([{"project_identifier": project_identifier}])
@@ -477,14 +475,14 @@ def test_ls_when_data_is_changed_many_projects(
 
 
 @parametrize_with_cases(
-    "ds, catalog, steps, include_preannotations, include_prepredictions, "
+    "ds, catalog, app, include_preannotations, include_prepredictions, "
     "include_predictions, label_studio_session, delete_unannotated_tasks_only_on_update",
     cases=CasesLabelStudio,
 )
 def test_ls_when_task_is_missing_from_ls_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    app: DatapipeApp,
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -527,7 +525,7 @@ def test_ls_when_task_is_missing_from_ls_many_projects(
         ds=ds,
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
     # These steps should delete old tasks and create new tasks
     do_batch_generate(
@@ -535,7 +533,7 @@ def test_ls_when_task_is_missing_from_ls_many_projects(
         ds=ds,
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
     for project_identifier in ["project_identifier0", "project_identifier1"]:
         idx_project = pd.DataFrame([{"project_identifier": project_identifier}])
@@ -564,14 +562,14 @@ def test_ls_when_task_is_missing_from_ls_many_projects(
 
 
 @parametrize_with_cases(
-    "ds, catalog, steps, include_preannotations, include_prepredictions, "
+    "ds, catalog, app, include_preannotations, include_prepredictions, "
     "include_predictions, label_studio_session, delete_unannotated_tasks_only_on_update",
     cases=CasesLabelStudio,
 )
 def test_ls_when_some_data_is_deleted_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    app: DatapipeApp,
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -595,7 +593,7 @@ def test_ls_when_some_data_is_deleted_many_projects(
         ds=ds,
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
     # Change 5 input elements
     do_batch_generate(
@@ -604,7 +602,7 @@ def test_ls_when_some_data_is_deleted_many_projects(
         output_dts=[ds.get_table("ls_input_data_raw")],
     )
     # These steps should delete tasks with same id accordingly, as data input has changed
-    run_steps(ds, steps)
+    app.run()
 
     for project_identifier in ["project_identifier0", "project_identifier1"]:
         idx_project = pd.DataFrame([{"project_identifier": project_identifier}])
@@ -635,14 +633,14 @@ def test_ls_when_some_data_is_deleted_many_projects(
 
 
 @parametrize_with_cases(
-    "ds, catalog, steps, include_preannotations, include_prepredictions, "
+    "ds, catalog, app, include_preannotations, include_prepredictions, "
     "include_predictions, label_studio_session, delete_unannotated_tasks_only_on_update",
     cases=CasesLabelStudio,
 )
 def test_ls_moderate_then_delete_task_many_projects(
     ds: DataStore,
     catalog: Catalog,
-    steps: List[DatatableTransformStep],
+    app: DatapipeApp,
     include_preannotations: bool,
     include_prepredictions: bool,
     include_predictions: bool,
@@ -652,7 +650,7 @@ def test_ls_moderate_then_delete_task_many_projects(
     ls_moderation_base_many_projects(
         ds=ds,
         catalog=catalog,
-        steps=steps,
+        app=app,
         include_preannotations=include_preannotations,
         include_prepredictions=include_prepredictions,
         include_predictions=include_predictions,
@@ -661,7 +659,7 @@ def test_ls_moderate_then_delete_task_many_projects(
     )
     dt = ds.get_table("ls_input_data_raw")
     dt.delete_by_idx(dt.get_data(pd.DataFrame({"id": [f"task_{i}" for i in range(5)]})))
-    run_steps(ds, steps)
+    app.run()
     for project_identifier in ["project_identifier0", "project_identifier1"]:
         idx_project = pd.DataFrame([{"project_identifier": project_identifier}])
         project = get_project_by_title(label_studio_session, project_identifier)

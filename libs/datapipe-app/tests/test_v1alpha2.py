@@ -2,7 +2,6 @@ import typing as t
 
 import pandas as pd
 import pytest
-from datapipe.compute import run_steps
 from fastapi.testclient import TestClient
 
 from datapipe_app.datapipe_api import DatapipeAPI
@@ -28,7 +27,7 @@ def test_client(app: DatapipeAPI) -> t.Iterator[TestClient]:
             ]
         )
     )
-    run_steps(ds=app.ds, steps=app.steps)
+    app.run()
     yield TestClient(app)
 
 

@@ -83,7 +83,7 @@ def test_build_required_pipeline_inputs_marks_all_tables_as_required():
 
 def test_detection_inference_uses_model_list_filter(base_datastore, dbconn, monkeypatch):
     _require_runtime()
-    from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+    from datapipe.compute import Catalog, DatapipeApp, Table
     from datapipe.store.database import TableStoreDB
 
     from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
@@ -161,32 +161,30 @@ def test_detection_inference_uses_model_list_filter(base_datastore, dbconn, monk
         pd.DataFrame({"detection_model_id": ["m2"]})
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         base_datastore,
         catalog,
-        Pipeline(
-            [
-                Inference_DetectionModel(
-                    input__image="image",
-                    input__detection_model=["detection_model", "best_detection_model"],
-                    output__detection_prediction="detection_prediction",
-                    primary_keys=["image_name"],
-                    bbox_id__name=None,
-                    create_table=True,
-                    chunk_size=1,
-                    image__image_path__name="image_url",
-                )
-            ]
-        ),
+        [
+            Inference_DetectionModel(
+                input__image="image",
+                input__detection_model=["detection_model", "best_detection_model"],
+                output__detection_prediction="detection_prediction",
+                primary_keys=["image_name"],
+                bbox_id__name=None,
+                create_table=True,
+                chunk_size=1,
+                image__image_path__name="image_url",
+            )
+        ],
     )
-    run_steps(base_datastore, steps)
+    app.run()
 
     assert seen_model_ids == ["m2"]
 
 
 def test_classification_inference_uses_model_list_filter(base_datastore, dbconn, monkeypatch):
     _require_runtime()
-    from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+    from datapipe.compute import Catalog, DatapipeApp, Table
     from datapipe.store.database import TableStoreDB
 
     from datapipe_ml.tasks.classification.inference import Inference_ClassificationModel
@@ -264,31 +262,29 @@ def test_classification_inference_uses_model_list_filter(base_datastore, dbconn,
         pd.DataFrame({"classification_model_id": ["m1"]})
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         base_datastore,
         catalog,
-        Pipeline(
-            [
-                Inference_ClassificationModel(
-                    input__image="image",
-                    input__classification_model=["classification_model", "best_classification_model"],
-                    output__classification_prediction="classification_prediction",
-                    primary_keys=["image_name"],
-                    create_table=True,
-                    chunk_size=1,
-                    image__image_path__name="image_url",
-                )
-            ]
-        ),
+        [
+            Inference_ClassificationModel(
+                input__image="image",
+                input__classification_model=["classification_model", "best_classification_model"],
+                output__classification_prediction="classification_prediction",
+                primary_keys=["image_name"],
+                create_table=True,
+                chunk_size=1,
+                image__image_path__name="image_url",
+            )
+        ],
     )
-    run_steps(base_datastore, steps)
+    app.run()
 
     assert seen_model_ids == ["m1"]
 
 
 def test_detection_inference_uses_image_list_filter(base_datastore, dbconn, monkeypatch):
     _require_runtime()
-    from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+    from datapipe.compute import Catalog, DatapipeApp, Table
     from datapipe.store.database import TableStoreDB
 
     from datapipe_ml.tasks.detection.inference import Inference_DetectionModel
@@ -375,24 +371,22 @@ def test_detection_inference_uses_image_list_filter(base_datastore, dbconn, monk
         )
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         base_datastore,
         catalog,
-        Pipeline(
-            [
-                Inference_DetectionModel(
-                    input__image=["image", "image_filter"],
-                    input__detection_model="detection_model",
-                    output__detection_prediction="detection_prediction",
-                    primary_keys=["image_name"],
-                    bbox_id__name=None,
-                    create_table=True,
-                    chunk_size=1,
-                    image__image_path__name="image_url",
-                )
-            ]
-        ),
+        [
+            Inference_DetectionModel(
+                input__image=["image", "image_filter"],
+                input__detection_model="detection_model",
+                output__detection_prediction="detection_prediction",
+                primary_keys=["image_name"],
+                bbox_id__name=None,
+                create_table=True,
+                chunk_size=1,
+                image__image_path__name="image_url",
+            )
+        ],
     )
-    run_steps(base_datastore, steps)
+    app.run()
 
     assert seen_image_names == ["img-1", "img-3"]

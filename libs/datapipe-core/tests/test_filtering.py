@@ -3,7 +3,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Boolean, Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -61,56 +61,52 @@ def test_delete_table_after_filter(dbconn):
     def gen_tbl():
         yield TEST_DF
 
-    old_pipeline = Pipeline(
-        [
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl"],
-            ),
-            BatchTransform(
-                func=get_tbl_filter,
-                inputs=["tbl"],
-                outputs=["tbl_filter"],
-                kwargs=dict(value=10),
-            ),
-            BatchTransform(
-                func=get_tbl_final,
-                inputs=["tbl", "tbl_filter"],
-                outputs=["tbl_final_id1_id2"],
-            ),
-            BatchTransform(
-                func=lambda df: df[["id1", "a"]],
-                inputs=["tbl_final_id1_id2"],
-                outputs=["tbl_final_id1"],
-            ),
-        ]
-    )
+    old_pipeline = [
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl"],
+        ),
+        BatchTransform(
+            func=get_tbl_filter,
+            inputs=["tbl"],
+            outputs=["tbl_filter"],
+            kwargs=dict(value=10),
+        ),
+        BatchTransform(
+            func=get_tbl_final,
+            inputs=["tbl", "tbl_filter"],
+            outputs=["tbl_final_id1_id2"],
+        ),
+        BatchTransform(
+            func=lambda df: df[["id1", "a"]],
+            inputs=["tbl_final_id1_id2"],
+            outputs=["tbl_final_id1"],
+        ),
+    ]
 
     # Отличается от old_pipeline другой фильтрацией
-    new_pipeline = Pipeline(
-        [
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl"],
-            ),
-            BatchTransform(
-                func=get_tbl_filter,
-                inputs=["tbl"],
-                outputs=["tbl_filter"],
-                kwargs=dict(value=4),
-            ),
-            BatchTransform(
-                func=get_tbl_final,
-                inputs=["tbl", "tbl_filter"],
-                outputs=["tbl_final_id1_id2"],
-            ),
-            BatchTransform(
-                func=lambda df: df[["id1", "a"]],
-                inputs=["tbl_final_id1_id2"],
-                outputs=["tbl_final_id1"],
-            ),
-        ]
-    )
+    new_pipeline = [
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl"],
+        ),
+        BatchTransform(
+            func=get_tbl_filter,
+            inputs=["tbl"],
+            outputs=["tbl_filter"],
+            kwargs=dict(value=4),
+        ),
+        BatchTransform(
+            func=get_tbl_final,
+            inputs=["tbl", "tbl_filter"],
+            outputs=["tbl_final_id1_id2"],
+        ),
+        BatchTransform(
+            func=lambda df: df[["id1", "a"]],
+            inputs=["tbl_final_id1_id2"],
+            outputs=["tbl_final_id1"],
+        ),
+    ]
 
     ds = DataStore(dbconn, create_meta_table=True)
 
@@ -119,7 +115,7 @@ def test_delete_table_after_filter(dbconn):
     tbl_final_id1 = catalog.get_datatable(ds, "tbl_final_id1")
 
     # Чистый Фильтр (10 значений)
-    run_pipeline(ds, catalog, old_pipeline)
+    DatapipeApp(ds, catalog, old_pipeline).run()
     assert len(tbl_final_id1_id2.get_data()) == 10
     assert len(tbl_final_id1.get_data()) == 10
     assert_datatable_equal(tbl_final_id1_id2, TEST_DF)
@@ -131,7 +127,7 @@ def test_delete_table_after_filter(dbconn):
     # Фильтр отсеивает 5 значений, поэтому они должны быть удалены из дальнейших таблиц
     ds = DataStore(dbconn, create_meta_table=True)
 
-    run_pipeline(ds, catalog, new_pipeline)
+    DatapipeApp(ds, catalog, new_pipeline).run()
     assert len(tbl_final_id1_id2.get_data()) == 5
     assert len(tbl_final_id1.get_data()) == 5
     assert_datatable_equal(tbl_final_id1_id2, TEST_DF[:5])

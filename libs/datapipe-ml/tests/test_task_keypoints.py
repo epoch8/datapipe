@@ -103,7 +103,7 @@ def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, sm
     pytest.importorskip("tqdm")
     pytest.importorskip("datapipe")
 
-    from datapipe.compute import Catalog, Pipeline, Table, build_compute
+    from datapipe.compute import Catalog, DatapipeApp, Table
     from datapipe.store.database import TableStoreDB
     from datapipe_ml.tasks.keypoints.train.yolov8 import (
         Train_YoloV8_KeypointsModel,
@@ -159,38 +159,36 @@ def test_keypoints_yolov8_training_builds_pose_tables(base_datastore, dbconn, sm
     gt = pd.merge(gt, smoke_dataset.image.iloc[:2], on="image_id")
     catalog.get_datatable(base_datastore, "keypoints_frozen_dataset__has__image_gt").store_chunk(gt)
 
-    steps = build_compute(
+    app = DatapipeApp(
         base_datastore,
         catalog,
-        Pipeline(
-            [
-                Train_YoloV8_KeypointsModel(
-                    input__keypoints_frozen_dataset="keypoints_frozen_dataset",
-                    input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
-                    output__yolov8_train_config="keypoints_train_config",
-                    output__yolov8_custom_train_config="keypoints_custom_train_config",
-                    output__keypoints_training_request="keypoints_training_request",
-                    output__model_keypoints_size_for_resize="model_keypoints_size_for_resize",
-                    output__keypoints_size_for_resize="keypoints_size_for_resize",
-                    output__keypoints_frozen_dataset__class_names="keypoints_class_names",
-                    output__keypoints_frozen_dataset__resized_image_file="keypoints_resized_image_file",
-                    output__keypoints_frozen_dataset__yolo_txt="keypoints_yolo_txt",
-                    output__keypoints_model="keypoints_model",
-                    output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
-                    output__training_status="keypoints_training_status",
-                    working_dir=str(tmp_path),
-                    yolov8_train_configs=[
-                        YoloV8_TrainingConfig(model="yolo11n-pose.pt", imgsz=32, batch=1, epochs=1, device=SMOKE_DEVICE)
-                    ],
-                    primary_keys=["image_id"],
-                    bbox_id__name=None,
-                    create_table=True,
-                )
-            ]
-        ),
+        [
+            Train_YoloV8_KeypointsModel(
+                input__keypoints_frozen_dataset="keypoints_frozen_dataset",
+                input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
+                output__yolov8_train_config="keypoints_train_config",
+                output__yolov8_custom_train_config="keypoints_custom_train_config",
+                output__keypoints_training_request="keypoints_training_request",
+                output__model_keypoints_size_for_resize="model_keypoints_size_for_resize",
+                output__keypoints_size_for_resize="keypoints_size_for_resize",
+                output__keypoints_frozen_dataset__class_names="keypoints_class_names",
+                output__keypoints_frozen_dataset__resized_image_file="keypoints_resized_image_file",
+                output__keypoints_frozen_dataset__yolo_txt="keypoints_yolo_txt",
+                output__keypoints_model="keypoints_model",
+                output__keypoints_model_is_trained_on_keypoints_frozen_dataset="keypoints_model_link",
+                output__training_status="keypoints_training_status",
+                working_dir=str(tmp_path),
+                yolov8_train_configs=[
+                    YoloV8_TrainingConfig(model="yolo11n-pose.pt", imgsz=32, batch=1, epochs=1, device=SMOKE_DEVICE)
+                ],
+                primary_keys=["image_id"],
+                bbox_id__name=None,
+                create_table=True,
+            )
+        ],
     )
 
-    assert len(steps) > 0
+    assert len(app.steps) > 0
     model_columns = {column.name for column in base_datastore.get_table("keypoints_model").table_store.data_sql_schema}
     assert {
         "keypoints_model__pose_P",

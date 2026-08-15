@@ -8,11 +8,8 @@ from datapipe.compute import (
     Catalog,
     ComputeInput,
     ComputeOutput,
-    Pipeline,
+    DatapipeApp,
     Table,
-    build_compute,
-    run_pipeline,
-    run_steps,
 )
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate, do_batch_generate
@@ -87,25 +84,23 @@ def test_image_pipeline(dbconn, tmp_dir):
         }
     )
 
-    pipeline = Pipeline(
-        [
-            BatchGenerate(
-                gen_images,
-                outputs=["tbl1"],
-            ),
-            BatchTransform(
-                resize_images,
-                inputs=["tbl1"],
-                outputs=["tbl2"],
-            ),
-        ]
-    )
+    pipeline = [
+        BatchGenerate(
+            gen_images,
+            outputs=["tbl1"],
+        ),
+        BatchTransform(
+            resize_images,
+            inputs=["tbl1"],
+            outputs=["tbl2"],
+        ),
+    ]
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 0
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 0
 
     ds = DataStore(dbconn, create_meta_table=True)
-    run_pipeline(ds, catalog, pipeline)
+    DatapipeApp(ds, catalog, pipeline).run()
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 10
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 10
@@ -137,19 +132,17 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
         }
     )
 
-    pipeline = Pipeline(
-        [
-            UpdateExternalTable("tbl1"),
-            BatchTransform(lambda df: df, inputs=["tbl1"], outputs=["tbl2"]),
-        ]
-    )
+    pipeline = [
+        UpdateExternalTable("tbl1"),
+        BatchTransform(lambda df: df, inputs=["tbl1"], outputs=["tbl2"]),
+    ]
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 10
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 0
 
     ds = DataStore(dbconn, create_meta_table=True)
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    app = DatapipeApp(ds, catalog, pipeline)
+    app.run()
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 10
     assert len(list(tmp_dir.glob("tbl2/*.png"))) == 10
@@ -160,7 +153,7 @@ def test_image_batch_generate_with_later_deleting(dbconn, tmp_dir):
     for id in [0, 5, 7, 8, 9]:
         (tmp_dir / "tbl1" / f"im_{id}.png").unlink()
 
-    run_steps(ds, steps)
+    app.run()
 
     assert len(list(tmp_dir.glob("tbl1/*.png"))) == 5
     assert len(catalog.get_datatable(ds, "tbl1").get_data()) == 5

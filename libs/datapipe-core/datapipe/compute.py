@@ -327,139 +327,110 @@ class PipelineStep(ABC):
         raise NotImplementedError
 
 
-@dataclass
-class Pipeline:
-    steps: Sequence[PipelineStep]
-
-
 class DatapipeApp:
-    def __init__(self, ds: DataStore, catalog: Catalog, pipeline: Pipeline):
+    def __init__(self, ds: DataStore, catalog: Catalog, pipeline: Sequence[PipelineStep]):
         self.ds = ds
         self.catalog = catalog
         self.pipeline = pipeline
-        self.steps = build_compute(ds, catalog, pipeline)
 
+        with tracer.start_as_current_span("build_compute"):
+            catalog.init_all_tables(ds)
 
-def build_compute(ds: DataStore, catalog: Catalog, pipeline: Pipeline) -> list[ComputeStep]:
-    with tracer.start_as_current_span("build_compute"):
-        catalog.init_all_tables(ds)
+            compute_pipeline: list[ComputeStep] = []
 
-        compute_pipeline: list[ComputeStep] = []
+            seen_steps = []
+            for step in pipeline:
+                compute_steps = step.build_compute(ds, catalog)
+                compute_pipeline.extend(compute_steps)
 
-        seen_steps = []
-        for step in pipeline.steps:
-            compute_steps = step.build_compute(ds, catalog)
-            compute_pipeline.extend(compute_steps)
+                for compute_step in compute_steps:
+                    if compute_step.name in seen_steps:
+                        raise Exception(f"Duplicate step name: {compute_step.name}")
+                    seen_steps.append(compute_step.name)
 
-            for compute_step in compute_steps:
-                if compute_step.name in seen_steps:
-                    raise Exception(f"Duplicate step name: {compute_step.name}")
-                seen_steps.append(compute_step.name)
+                    # TODO move to lints
+                    compute_step.validate()
 
-                # TODO move to lints
-                compute_step.validate()
+            self.steps = compute_pipeline
 
-        return compute_pipeline
+    def run(
+        self,
+        steps: Sequence[ComputeStep] | None = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+    ) -> None:
+        steps = steps if steps is not None else self.steps
+        callback = run_config.callback if run_config is not None else None
+
+        if callback is not None:
+            callback.on_run_start(steps)
+
+        try:
+            for step in steps:
+                if callback is not None:
+                    callback.on_step_start(step)
+
+                try:
+                    with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                        logger.info(f"Running {step.name} {step.format_io()}")
+                        step.run_full(
+                            ds=self.ds,
+                            run_config=run_config,
+                            executor=executor,
+                        )
+                except BaseException as exc:
+                    if callback is not None:
+                        callback.on_step_error(step, exc)
+                    raise
+                else:
+                    if callback is not None:
+                        callback.on_step_success(step)
+        except BaseException as exc:
+            if callback is not None:
+                callback.on_run_error(exc)
+            raise
+        else:
+            if callback is not None:
+                callback.on_run_success()
+
+    def run_changelist(
+        self,
+        changelist: ChangeList,
+        steps: Sequence[ComputeStep] | None = None,
+        run_config: RunConfig | None = None,
+        executor: Executor | None = None,
+    ) -> None:
+        # FIXME extract Batch* steps to separate module
+        from datapipe.step.batch_transform import BaseBatchTransformStep
+
+        steps = steps if steps is not None else self.steps
+
+        current_changes = changelist
+        next_changes = ChangeList()
+        iteration = 0
+
+        with tracer.start_as_current_span("Start pipeline for changelist"):
+            while not current_changes.empty() and iteration < 100:
+                with tracer.start_as_current_span("run_steps"):
+                    for step in steps:
+                        with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
+                            logger.info(f"Running {step.name} {step.format_io()}")
+
+                            if isinstance(step, BaseBatchTransformStep):
+                                step_changes = step.run_changelist(
+                                    self.ds,
+                                    current_changes,
+                                    run_config,
+                                    executor=executor,
+                                )
+                                next_changes.extend(step_changes)
+
+                current_changes = next_changes
+                next_changes = ChangeList()
+                iteration += 1
 
 
 def print_compute(steps: list[ComputeStep]) -> None:
     import pprint
 
     pprint.pp(steps)
-
-
-def run_steps(
-    ds: DataStore,
-    steps: Sequence[ComputeStep],
-    run_config: RunConfig | None = None,
-    executor: Executor | None = None,
-) -> None:
-    callback = run_config.callback if run_config is not None else None
-
-    if callback is not None:
-        callback.on_run_start(steps)
-
-    try:
-        for step in steps:
-            if callback is not None:
-                callback.on_step_start(step)
-
-            try:
-                with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
-                    logger.info(f"Running {step.name} {step.format_io()}")
-                    step.run_full(
-                        ds=ds,
-                        run_config=run_config,
-                        executor=executor,
-                    )
-            except BaseException as exc:
-                if callback is not None:
-                    callback.on_step_error(step, exc)
-                raise
-            else:
-                if callback is not None:
-                    callback.on_step_success(step)
-    except BaseException as exc:
-        if callback is not None:
-            callback.on_run_error(exc)
-        raise
-    else:
-        if callback is not None:
-            callback.on_run_success()
-
-
-def run_pipeline(
-    ds: DataStore,
-    catalog: Catalog,
-    pipeline: Pipeline,
-    run_config: RunConfig | None = None,
-) -> None:
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps, run_config)
-
-
-def run_changelist(
-    ds: DataStore,
-    catalog: Catalog,
-    pipeline: Pipeline,
-    changelist: ChangeList,
-    run_config: RunConfig | None = None,
-) -> None:
-    steps = build_compute(ds, catalog, pipeline)
-
-    return run_steps_changelist(ds, steps, changelist, run_config)
-
-
-def run_steps_changelist(
-    ds: DataStore,
-    steps: list[ComputeStep],
-    changelist: ChangeList,
-    run_config: RunConfig | None = None,
-    executor: Executor | None = None,
-) -> None:
-    # FIXME extract Batch* steps to separate module
-    from datapipe.step.batch_transform import BaseBatchTransformStep
-
-    current_changes = changelist
-    next_changes = ChangeList()
-    iteration = 0
-
-    with tracer.start_as_current_span("Start pipeline for changelist"):
-        while not current_changes.empty() and iteration < 100:
-            with tracer.start_as_current_span("run_steps"):
-                for step in steps:
-                    with tracer.start_as_current_span(f"{step.name} {step.format_io()}"):
-                        logger.info(f"Running {step.name} {step.format_io()}")
-
-                        if isinstance(step, BaseBatchTransformStep):
-                            step_changes = step.run_changelist(
-                                ds,
-                                current_changes,
-                                run_config,
-                                executor=executor,
-                            )
-                            next_changes.extend(step_changes)
-
-            current_changes = next_changes
-            next_changes = ChangeList()
-            iteration += 1
