@@ -10,10 +10,9 @@ from cv_pipeliner.inferencers.pipeline import PipelineModelSpec
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
@@ -277,10 +276,9 @@ class Inference_PipelineModel(PipelineStep):
             ),
         )
         # ---
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=wrap_inference_inputs(
+        pipeline = [
+            BatchTransform(
+                func=wrap_inference_inputs(
                         pipeline_inference,
                         n_image_inputs=len(image_pipeline_inputs),
                         primary_keys=self.primary_keys,
@@ -329,5 +327,4 @@ class Inference_PipelineModel(PipelineStep):
                     filters=self.filters,
                 ),
             ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        return DatapipeApp(ds, catalog, pipeline).steps

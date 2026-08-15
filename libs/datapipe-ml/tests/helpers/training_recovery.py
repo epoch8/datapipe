@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
 
 import pandas as pd
 import pytest
-from datapipe.compute import Pipeline, PipelineStep, build_compute
+from datapipe.compute import DatapipeApp, PipelineStep
 from datapipe.types import IndexDF
 
 from datapipe_ml.training.runs import active_lease
@@ -344,7 +344,7 @@ def reopen_recovery_runtime(
 ) -> tuple[SmokeRuntime, list]:
     """Reattach to an existing workdir and register pipeline tables for status reads."""
     runtime, steps = make_recovery_runtime(tmp_path, case, working_dir=working_dir)
-    build_compute(runtime.ds, runtime.catalog, Pipeline(steps))
+    DatapipeApp(runtime.ds, runtime.catalog, steps)
     return runtime, steps
 
 

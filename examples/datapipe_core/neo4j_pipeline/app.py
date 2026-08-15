@@ -7,7 +7,7 @@ from typing import Generator, cast
 import pandas as pd
 from sqlalchemy import JSON, Column, String
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.store.database import DBConn
@@ -117,12 +117,10 @@ def gen_edges() -> Generator[pd.DataFrame, None, None]:
     yield pd.DataFrame(rows)
 
 
-pipeline = Pipeline(
-    [
-        BatchGenerate(gen_nodes, outputs=[node_table]),
-        BatchGenerate(gen_edges, outputs=[edge_table]),
-    ]
-)
+pipeline = [
+    BatchGenerate(gen_nodes, outputs=[node_table]),
+    BatchGenerate(gen_edges, outputs=[edge_table]),
+]
 
 
 def main() -> None:
@@ -131,9 +129,7 @@ def main() -> None:
 
     app = DatapipeApp(ds=ds, catalog=Catalog({}), pipeline=pipeline)
 
-    from datapipe.compute import run_steps
-
-    run_steps(app.ds, app.steps)
+    app.run()
 
     # simple read
     idx: IndexDF = cast(IndexDF, pd.DataFrame({"node_id": ["N0"], "node_type": ["person"]}))

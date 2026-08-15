@@ -7,10 +7,9 @@ from cv_pipeliner.metrics.detection import ImageDataMatching, get_df_detection_m
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import ExecutorConfig
@@ -342,9 +341,8 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
         )
         # ---
         ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
-        pipeline = Pipeline(
-            [
-                BatchTransform(
+        pipeline = [
+            BatchTransform(
                     func=wrap_ground_truth_inputs(
                         count_detection_metrics_on_image,
                         n_ground_truth_inputs=len(ground_truth_inputs),
@@ -382,5 +380,4 @@ class CountMetrics_Subset_DetectionModel(PipelineStep):
                     chunk_size=1,
                 ),
             ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        return DatapipeApp(ds, catalog, pipeline).steps

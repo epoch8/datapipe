@@ -75,27 +75,24 @@ def build_base_catalog(dbconn):
 
 
 def build_smoke_pipeline(dataset: SmokeDataset):
-    from datapipe.compute import Pipeline
     from datapipe.step.batch_generate import BatchGenerate
     from datapipe.step.batch_transform import BatchTransform
 
-    return Pipeline(
-        [
-            BatchGenerate(
-                lambda: generate_smoke_data(dataset),
-                outputs=[
-                    "image",
-                    "image__ground_truth",
-                    "subset__has__image",
-                ],
-            ),
-            BatchTransform(
-                func=define_ground_truth_for_classification,
-                inputs=["image__ground_truth"],
-                outputs=["image__ground_truth_for_classification"],
-            ),
-        ]
-    )
+    return [
+        BatchGenerate(
+            lambda: generate_smoke_data(dataset),
+            outputs=[
+                "image",
+                "image__ground_truth",
+                "subset__has__image",
+            ],
+        ),
+        BatchTransform(
+            func=define_ground_truth_for_classification,
+            inputs=["image__ground_truth"],
+            outputs=["image__ground_truth_for_classification"],
+        ),
+    ]
 
 
 def build_smoke_app(dbconn, working_dir: Path, dataset: Optional[SmokeDataset] = None):

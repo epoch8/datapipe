@@ -59,7 +59,7 @@ def _make_catalog(dbconn):
 
 def test_classification_metrics_for_correct_and_wrong_predictions(base_datastore, dbconn):
     _require_datapipe_runtime()
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     from datapipe_ml.tasks.classification.metrics import (
         CountMetrics_Subset_ClassificationModel,
@@ -83,25 +83,23 @@ def test_classification_metrics_for_correct_and_wrong_predictions(base_datastore
         )
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         ds,
         catalog,
-        Pipeline(
-            [
-                CountMetrics_Subset_ClassificationModel(
-                    input__image__ground_truth="image_gt",
-                    input__subset__has__image="subset_has_image",
-                    input__classification_prediction="classification_prediction",
-                    output__classification_model__metrics__on__image="classification_metrics_on_image",
-                    output__classification_model__metrics_by_cls_on__subset="classification_metrics_by_cls",
-                    output__classification_model__metrics_on__subset="classification_metrics_on_subset",
-                    primary_keys=["image_id"],
-                    create_table=True,
-                )
-            ]
-        ),
+        [
+            CountMetrics_Subset_ClassificationModel(
+                input__image__ground_truth="image_gt",
+                input__subset__has__image="subset_has_image",
+                input__classification_prediction="classification_prediction",
+                output__classification_model__metrics__on__image="classification_metrics_on_image",
+                output__classification_model__metrics_by_cls_on__subset="classification_metrics_by_cls",
+                output__classification_model__metrics_on__subset="classification_metrics_on_subset",
+                primary_keys=["image_id"],
+                create_table=True,
+            )
+        ],
     )
-    run_steps(ds, steps)
+    app.run()
 
     overall = ds.get_table("classification_metrics_on_subset").get_data()
     assert len(overall) == 1

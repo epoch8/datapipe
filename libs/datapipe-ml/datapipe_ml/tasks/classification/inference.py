@@ -9,10 +9,9 @@ from cv_pipeliner.inferencers.classification.core import ClassificationModelSpec
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
@@ -230,9 +229,8 @@ class Inference_ClassificationModel(PipelineStep):
             ),
         )
         # ---
-        pipeline = Pipeline(
-            [
-                BatchTransform(
+        pipeline = [
+            BatchTransform(
                     func=wrap_inference_inputs(
                         classification_inference,
                         n_image_inputs=len(image_pipeline_inputs),
@@ -269,5 +267,4 @@ class Inference_ClassificationModel(PipelineStep):
                     filters=self.filters,
                 ),
             ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        return DatapipeApp(ds, catalog, pipeline).steps

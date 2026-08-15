@@ -5,10 +5,9 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -119,25 +118,23 @@ class Define_PipelineModel(PipelineStep):
             ),
         )
         # ---
-        pipeline = Pipeline(
-            [
-                DatatableBatchTransform(
-                    func=self.define_pipeline_model_func,
-                    inputs=[
-                        self.input__detection_model,
-                        self.input__classification_model,
-                        pipeline_output_as_input(self.output__pipeline_model),
-                    ],
-                    outputs=[self.output__pipeline_model],
-                    transform_keys=dt__input__detection_model.primary_keys
-                    + dt__input__classification_model.primary_keys,
-                    labels=self.labels,
-                    kwargs=dict(
-                        max_within_time=self.max_within_time,
-                        detection_model_primary_keys=dt__input__detection_model.primary_keys,
-                        classification_model_primary_keys=dt__input__classification_model.primary_keys,
-                    ),
+        pipeline = [
+            DatatableBatchTransform(
+                func=self.define_pipeline_model_func,
+                inputs=[
+                    self.input__detection_model,
+                    self.input__classification_model,
+                    pipeline_output_as_input(self.output__pipeline_model),
+                ],
+                outputs=[self.output__pipeline_model],
+                transform_keys=dt__input__detection_model.primary_keys
+                + dt__input__classification_model.primary_keys,
+                labels=self.labels,
+                kwargs=dict(
+                    max_within_time=self.max_within_time,
+                    detection_model_primary_keys=dt__input__detection_model.primary_keys,
+                    classification_model_primary_keys=dt__input__classification_model.primary_keys,
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+            ),
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps

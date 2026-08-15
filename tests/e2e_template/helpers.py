@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
-from datapipe.compute import DatapipeApp, run_steps
+from datapipe.compute import DatapipeApp
 from datapipe.cli import filter_steps_by_labels_and_name
 from datapipe_ml.utils.image_data_stores import _reset_fiftyone_dataset_store_registry
 from sqlalchemy import create_engine, text
@@ -85,5 +85,5 @@ def run_template_stage(pipeline_name: Literal["detection", "keypoints"], stage: 
     steps = filter_steps_by_labels_and_name(app, labels=[("stage", stage)])
     if not steps:
         raise AssertionError(f"No steps with label stage={stage} in {pipeline_name} template")
-    run_steps(app.ds, steps)
+    app.run(steps=steps)
     return app

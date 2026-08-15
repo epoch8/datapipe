@@ -65,7 +65,7 @@ def _make_catalog(dbconn):
 
 def test_keypoints_metrics_for_perfect_prediction(base_datastore, dbconn):
     _require_metrics_runtime()
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     from datapipe_ml.tasks.keypoints.metrics import CountMetrics_Subset_KeypointsModel
 
@@ -97,26 +97,24 @@ def test_keypoints_metrics_for_perfect_prediction(base_datastore, dbconn):
         )
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         ds,
         catalog,
-        Pipeline(
-            [
-                CountMetrics_Subset_KeypointsModel(
-                    input__image__ground_truth="image_gt",
-                    input__subset__has__image="subset_has_image",
-                    input__keypoints_prediction="keypoints_prediction",
-                    output__keypoints_model__metrics_on__image="keypoints_metrics_on_image",
-                    output__keypoints_model__metrics_by_cls_on__subset="keypoints_metrics_by_cls",
-                    output__keypoints_model__metrics_on__subset="keypoints_metrics_on_subset",
-                    primary_keys=["image_id"],
-                    bbox_id__name=None,
-                    create_table=True,
-                )
-            ]
-        ),
+        [
+            CountMetrics_Subset_KeypointsModel(
+                input__image__ground_truth="image_gt",
+                input__subset__has__image="subset_has_image",
+                input__keypoints_prediction="keypoints_prediction",
+                output__keypoints_model__metrics_on__image="keypoints_metrics_on_image",
+                output__keypoints_model__metrics_by_cls_on__subset="keypoints_metrics_by_cls",
+                output__keypoints_model__metrics_on__subset="keypoints_metrics_on_subset",
+                primary_keys=["image_id"],
+                bbox_id__name=None,
+                create_table=True,
+            )
+        ],
     )
-    run_steps(ds, steps)
+    app.run()
 
     overall = ds.get_table("keypoints_metrics_on_subset").get_data()
     assert len(overall) == 1

@@ -61,7 +61,7 @@ def _make_catalog(dbconn):
 
 def test_detection_metrics_for_perfect_prediction(base_datastore, dbconn):
     _require_metrics_runtime()
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     from datapipe_ml.tasks.detection.metrics import CountMetrics_Subset_DetectionModel
 
@@ -83,25 +83,23 @@ def test_detection_metrics_for_perfect_prediction(base_datastore, dbconn):
         )
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         ds,
         catalog,
-        Pipeline(
-            [
-                CountMetrics_Subset_DetectionModel(
-                    input__image__ground_truth="image_gt",
-                    input__subset__has__image="subset_has_image",
-                    input__detection_prediction="detection_prediction",
-                    output__detection_model__metrics__on__image="detection_metrics_on_image",
-                    output__detection_model__metrics__on__subset="detection_metrics_on_subset",
-                    primary_keys=["image_id"],
-                    bbox_id__name=None,
-                    create_table=True,
-                )
-            ]
-        ),
+        [
+            CountMetrics_Subset_DetectionModel(
+                input__image__ground_truth="image_gt",
+                input__subset__has__image="subset_has_image",
+                input__detection_prediction="detection_prediction",
+                output__detection_model__metrics__on__image="detection_metrics_on_image",
+                output__detection_model__metrics__on__subset="detection_metrics_on_subset",
+                primary_keys=["image_id"],
+                bbox_id__name=None,
+                create_table=True,
+            )
+        ],
     )
-    run_steps(ds, steps)
+    app.run()
 
     overall = ds.get_table("detection_metrics_on_subset").get_data()
     assert len(overall) == 1

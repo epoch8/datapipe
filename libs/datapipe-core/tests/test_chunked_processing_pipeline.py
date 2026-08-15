@@ -6,15 +6,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import (
-    Catalog,
-    Pipeline,
-    Table,
-    build_compute,
-    run_changelist,
-    run_steps,
-    run_steps_changelist,
-)
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_generate import BatchGenerate
@@ -69,23 +61,20 @@ def test_table_store_json_line_reading(tmp_dir, dbconn):
             ),
         }
     )
-    pipeline = Pipeline(
-        [
-            UpdateExternalTable("input_data"),
-            BatchTransform(
-                conversion,
-                inputs=["input_data"],
-                outputs=["output_data"],
-                chunk_size=CHUNK_SIZE,
-                kwargs=dict(
-                    multiply=2,
-                ),
+    pipeline = [
+        UpdateExternalTable("input_data"),
+        BatchTransform(
+            conversion,
+            inputs=["input_data"],
+            outputs=["output_data"],
+            chunk_size=CHUNK_SIZE,
+            kwargs=dict(
+                multiply=2,
             ),
-        ]
-    )
+        ),
+    ]
 
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    DatapipeApp(ds, catalog, pipeline).run()
 
     df_transformed = catalog.get_datatable(ds, "output_data").get_data()
     assert len(df_transformed) == 2 * CHUNK_SIZE
@@ -135,22 +124,19 @@ def test_transform_with_many_input_and_output_tables(tmp_dir, dbconn):
     def transform(df1, df2):
         return df1, df2
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                transform,
-                inputs=["inp1", "inp2"],
-                outputs=["out1", "out2"],
-                chunk_size=CHUNK_SIZE,
-            ),
-        ]
-    )
+    pipeline = [
+        BatchTransform(
+            transform,
+            inputs=["inp1", "inp2"],
+            outputs=["out1", "out2"],
+            chunk_size=CHUNK_SIZE,
+        ),
+    ]
 
     catalog.get_datatable(ds, "inp1").store_chunk(TEST_DF)
     catalog.get_datatable(ds, "inp2").store_chunk(TEST_DF)
 
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    DatapipeApp(ds, catalog, pipeline).run()
 
     out1 = catalog.get_datatable(ds, "out1")
     out2 = catalog.get_datatable(ds, "out2")
@@ -185,23 +171,21 @@ def test_run_changelist_simple(dbconn):
     def transform(df):
         return df
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                transform,
-                inputs=["inp"],
-                outputs=["out"],
-                chunk_size=CHUNK_SIZE,
-            ),
-        ]
-    )
+    pipeline = [
+        BatchTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE,
+        ),
+    ]
 
     changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4]], ["id"])
     changelist = ChangeList.create("inp", changeIdx)
 
     catalog.get_datatable(ds, "inp").store_chunk(TEST_DF, now=0)
 
-    run_changelist(ds, catalog, pipeline, changelist)
+    DatapipeApp(ds, catalog, pipeline).run_changelist(changelist)
 
     assert_datatable_equal(catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index])
 
@@ -267,23 +251,21 @@ def test_run_changelist_by_chunk_size_simple(dbconn):
 
         return df
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                transform,
-                inputs=["inp"],
-                outputs=["out"],
-                chunk_size=CHUNK_SIZE_SMALL,
-            ),
-        ]
-    )
+    pipeline = [
+        BatchTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE_SMALL,
+        ),
+    ]
 
     changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4, 5, 6]], ["id"])
     changelist = ChangeList.create("inp", changeIdx)
 
     catalog.get_datatable(ds, "inp").store_chunk(TEST_DF, now=0)
 
-    run_changelist(ds, catalog, pipeline, changelist)
+    DatapipeApp(ds, catalog, pipeline).run_changelist(changelist)
 
     assert_datatable_equal(catalog.get_datatable(ds, "out"), TEST_DF.loc[changeIdx.index])
 
@@ -317,29 +299,27 @@ def test_run_changelist_cycle(dbconn):
     def cap_10(df):
         return df.assign(a=df["a"].clip(0, 10))
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                inc,
-                inputs=["a"],
-                outputs=["b"],
-                chunk_size=CHUNK_SIZE,
-            ),
-            BatchTransform(
-                cap_10,
-                inputs=["b"],
-                outputs=["a"],
-                chunk_size=CHUNK_SIZE,
-            ),
-        ]
-    )
+    pipeline = [
+        BatchTransform(
+            inc,
+            inputs=["a"],
+            outputs=["b"],
+            chunk_size=CHUNK_SIZE,
+        ),
+        BatchTransform(
+            cap_10,
+            inputs=["b"],
+            outputs=["a"],
+            chunk_size=CHUNK_SIZE,
+        ),
+    ]
 
     changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4]], ["id"])
     changelist = ChangeList.create("a", changeIdx)
 
     catalog.get_datatable(ds, "a").store_chunk(TEST_DF, now=0)
 
-    run_changelist(ds, catalog, pipeline, changelist)
+    DatapipeApp(ds, catalog, pipeline).run_changelist(changelist)
 
     assert_df_equal(
         catalog.get_datatable(ds, "a").get_data(),
@@ -387,20 +367,18 @@ def test_run_changelist_with_datatable_transform(dbconn):
         df = input_dt.get_data()
         output_dt.store_chunk(df)
 
-    pipeline = Pipeline(
-        [
-            DatatableTransform(
-                transform,
-                inputs=["inp"],
-                outputs=["out"],
-            ),
-        ]
-    )
+    pipeline = [
+        DatatableTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+        ),
+    ]
 
     changeIdx = data_to_index(TEST_DF.loc[[2, 3, 4, 5, 6]], ["id"])
     changelist = ChangeList.create("inp", changeIdx)
     catalog.get_datatable(ds, "inp").store_chunk(TEST_DF, now=0)
-    run_changelist(ds, catalog, pipeline, changelist)
+    DatapipeApp(ds, catalog, pipeline).run_changelist(changelist)
 
 
 def test_magic_injection_variables(dbconn):
@@ -439,29 +417,27 @@ def test_magic_injection_variables(dbconn):
         transform_count["value"] += 1
         return df
 
-    pipeline = Pipeline(
-        [
-            BatchGenerate(func=add_inp_table, outputs=["inp"]),
-            BatchTransform(
-                transform,
-                inputs=["inp"],
-                outputs=["out"],
-                chunk_size=CHUNK_SIZE,
-                kwargs=dict(transform_count=transform_count),
-            ),
-        ]
-    )
+    pipeline = [
+        BatchGenerate(func=add_inp_table, outputs=["inp"]),
+        BatchTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE,
+            kwargs=dict(transform_count=transform_count),
+        ),
+    ]
 
     dt_input = catalog.get_datatable(ds, "inp")
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+    app = DatapipeApp(ds, catalog, pipeline)
+    app.run()
 
     dt_out = catalog.get_datatable(ds, "out")
     assert_datatable_equal(dt_out, TEST_DF)
 
     dt_input.delete_by_idx(data_to_index(dt_input.get_metadata(), dt_input.primary_keys))
 
-    run_steps(ds, steps[1:], RunConfig())
+    app.run(steps=app.steps[1:], run_config=RunConfig())
     assert transform_count["value"] == 3
 
 
@@ -496,23 +472,21 @@ def test_magic_injection_variables_changelist(dbconn):
         transform_count["value"] += 1
         return df
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                transform,
-                inputs=["inp"],
-                outputs=["out"],
-                chunk_size=CHUNK_SIZE,
-                kwargs=dict(transform_count=transform_count),
-            ),
-        ]
-    )
+    pipeline = [
+        BatchTransform(
+            transform,
+            inputs=["inp"],
+            outputs=["out"],
+            chunk_size=CHUNK_SIZE,
+            kwargs=dict(transform_count=transform_count),
+        ),
+    ]
 
     dt_input = catalog.get_datatable(ds, "inp")
     change_idx = dt_input.store_chunk(TEST_DF)
-    steps = build_compute(ds, catalog, pipeline)
+    app = DatapipeApp(ds, catalog, pipeline)
     changelist = ChangeList.create("inp", change_idx)
-    run_steps_changelist(ds, steps, changelist, RunConfig())
+    app.run_changelist(changelist, run_config=RunConfig())
 
     dt_out = catalog.get_datatable(ds, "out")
     assert_datatable_equal(dt_out, TEST_DF)
@@ -520,7 +494,7 @@ def test_magic_injection_variables_changelist(dbconn):
     change_idx = data_to_index(dt_input.get_metadata(), dt_input.primary_keys)
     dt_input.delete_by_idx(change_idx)
     changelist = ChangeList.create("inp", change_idx)
-    run_steps_changelist(ds, steps, changelist, RunConfig())
+    app.run_changelist(changelist, run_config=RunConfig())
     assert transform_count["value"] == 2
 
 
@@ -558,24 +532,22 @@ def test_stale_records_deletion_with_batch_generate(dbconn):
             }
         )
 
-    pipeline = Pipeline(
-        [
-            BatchGenerate(
-                func=add_inp_table,
-                outputs=["inp_del"],
-                delete_stale=True,  # Default behavior, deletes records that are not yielded by func
-                kwargs=dict(bg_count=bg_count),  # to avoid double counting
-            ),
-        ]
-    )
+    pipeline = [
+        BatchGenerate(
+            func=add_inp_table,
+            outputs=["inp_del"],
+            delete_stale=True,  # Default behavior, deletes records that are not yielded by func
+            kwargs=dict(bg_count=bg_count),  # to avoid double counting
+        ),
+    ]
 
-    steps = build_compute(ds, catalog, pipeline)
+    app = DatapipeApp(ds, catalog, pipeline)
 
     # First run
-    run_steps(ds, steps)
+    app.run()
 
     # Second run
-    run_steps(ds, steps)
+    app.run()
 
     # Check table shapes
     df_del = catalog.get_datatable(ds, "inp_del").get_data()
@@ -619,24 +591,22 @@ def test_stale_records_keep_with_batch_generate(dbconn):
             }
         )
 
-    pipeline = Pipeline(
-        [
-            BatchGenerate(
-                func=add_inp_table,
-                outputs=["inp_keep"],
-                delete_stale=False,  # keeps records that are not yielded by func
-                kwargs=dict(bg_count=bg_count),
-            ),
-        ]
-    )
+    pipeline = [
+        BatchGenerate(
+            func=add_inp_table,
+            outputs=["inp_keep"],
+            delete_stale=False,  # keeps records that are not yielded by func
+            kwargs=dict(bg_count=bg_count),
+        ),
+    ]
 
-    steps = build_compute(ds, catalog, pipeline)
+    app = DatapipeApp(ds, catalog, pipeline)
 
     # First run
-    run_steps(ds, steps)
+    app.run()
 
     # Second run
-    run_steps(ds, steps)
+    app.run()
 
     # Check table shapes
     df_keep = catalog.get_datatable(ds, "inp_keep").get_data()

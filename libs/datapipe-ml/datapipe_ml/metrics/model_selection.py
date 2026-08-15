@@ -5,10 +5,9 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -136,33 +135,31 @@ class FindBestModel(PipelineStep):
                 ).table_store
             ),
         )
-        pipeline = Pipeline(
-            [
-                DatatableBatchTransform(
-                    func=get_best_model_flag,
-                    inputs=[self.input__model, self.input__model__metrics_on__subset],
-                    outputs=[self.output__attr__model__is_best],
-                    transform_keys=self.primary_keys,
-                    labels=self.labels,
-                    kwargs=dict(
-                        primary_keys=self.primary_keys,
-                        group_by=self.group_by,
-                        is_best__name=self.is_best__name,
-                        subset_id=self.subset_id,
-                        metric__name=self.metric__name,
-                        func=self.func,
-                        threshold=self.threshold,
-                    ),
-                    chunk_size=10000000,
+        pipeline = [
+            DatatableBatchTransform(
+                func=get_best_model_flag,
+                inputs=[self.input__model, self.input__model__metrics_on__subset],
+                outputs=[self.output__attr__model__is_best],
+                transform_keys=self.primary_keys,
+                labels=self.labels,
+                kwargs=dict(
+                    primary_keys=self.primary_keys,
+                    group_by=self.group_by,
+                    is_best__name=self.is_best__name,
+                    subset_id=self.subset_id,
+                    metric__name=self.metric__name,
+                    func=self.func,
+                    threshold=self.threshold,
                 ),
-                BatchTransform(
-                    func=get_best_model,
-                    inputs=[pipeline_output_as_input(self.output__attr__model__is_best)],
-                    outputs=[self.output__best_model],
-                    transform_keys=self.primary_keys,
-                    labels=self.labels,
-                    kwargs=dict(primary_keys=self.primary_keys, is_best__name=self.is_best__name),
-                ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+                chunk_size=10000000,
+            ),
+            BatchTransform(
+                func=get_best_model,
+                inputs=[pipeline_output_as_input(self.output__attr__model__is_best)],
+                outputs=[self.output__best_model],
+                transform_keys=self.primary_keys,
+                labels=self.labels,
+                kwargs=dict(primary_keys=self.primary_keys, is_best__name=self.is_best__name),
+            ),
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps
