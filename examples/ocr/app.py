@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline
+from datapipe.compute import Catalog, DatapipeApp
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -48,7 +48,7 @@ for engine_id in ENABLED_ENGINES:
         )
     )
 
-pipeline = Pipeline(pipeline_steps)
+pipeline = pipeline_steps
 
 ds = DataStore(DBCONN, create_meta_table=True)
 app = DatapipeApp(ds, Catalog({}), pipeline)

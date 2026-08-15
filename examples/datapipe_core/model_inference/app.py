@@ -1,7 +1,7 @@
 import pandas as pd
 import sqlalchemy as sa
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
@@ -67,21 +67,19 @@ output_tbl = Table(
 )
 
 
-pipeline = Pipeline(
-    [
-        UpdateExternalTable(
-            output=input_tbl,
-        ),
-        UpdateExternalTable(
-            output=models_tbl,
-        ),
-        BatchTransform(
-            apply_model,
-            inputs=[input_tbl, models_tbl],
-            outputs=[output_tbl],
-            transform_keys=["pipeline_id", "input_id", "model_id"],
-        ),
-    ]
-)
+pipeline = [
+    UpdateExternalTable(
+        output=input_tbl,
+    ),
+    UpdateExternalTable(
+        output=models_tbl,
+    ),
+    BatchTransform(
+        apply_model,
+        inputs=[input_tbl, models_tbl],
+        outputs=[output_tbl],
+        transform_keys=["pipeline_id", "input_id", "model_id"],
+    ),
+]
 
 app = DatapipeApp(ds, Catalog({}), pipeline)

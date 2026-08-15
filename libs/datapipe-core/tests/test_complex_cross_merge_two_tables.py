@@ -6,7 +6,7 @@ from pytest_cases import parametrize
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -221,28 +221,26 @@ def test_complex_cross_merge_scenary(dbconn, test_case):
     def gen_tbl(df):
         yield df
 
-    pipeline_case = Pipeline(
-        [
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl_left"],
-                kwargs=dict(df=test_df_left),
-            ),
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl_right"],
-                kwargs=dict(df=test_df_right),
-            ),
-            BatchTransform(
-                func=cross_merge_func,
-                inputs=["tbl_left", "tbl_right"],
-                outputs=["tbl_left_x_right"],
-                transform_keys=transform_keys,
-                chunk_size=6,
-            ),
-        ]
-    )
-    run_pipeline(ds, catalog, pipeline_case)
+    pipeline_case = [
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl_left"],
+            kwargs=dict(df=test_df_left),
+        ),
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl_right"],
+            kwargs=dict(df=test_df_right),
+        ),
+        BatchTransform(
+            func=cross_merge_func,
+            inputs=["tbl_left", "tbl_right"],
+            outputs=["tbl_left_x_right"],
+            transform_keys=transform_keys,
+            chunk_size=6,
+        ),
+    ]
+    DatapipeApp(ds, catalog, pipeline_case).run()
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")
     tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
@@ -279,32 +277,30 @@ def test_complex_cross_merge_scenary_with_index_aliases(dbconn):
     def gen_tbl(df):
         yield df
 
-    pipeline_case = Pipeline(
-        [
-            BatchGenerate(func=gen_tbl, outputs=["tbl_left"], kwargs=dict(df=test_df_left)),
-            BatchGenerate(func=gen_tbl, outputs=["tbl_right"], kwargs=dict(df=test_df_right)),
-            BatchTransform(
-                func=cross_merge_func,
-                inputs=[
-                    InputSpec(table="tbl_left", keys={"left_id": "id_left"}),
-                    InputSpec(table="tbl_right", keys={"right_id": "id_right"}),
-                ],
-                outputs=[
-                    OutputSpec(
-                        table="tbl_left_x_right",
-                        keys={
-                            "left_id": "id_left",
-                            "right_id": "id_right",
-                        },
-                    )
-                ],
-                transform_keys=["left_id", "right_id"],
-                chunk_size=6,
-            ),
-        ]
-    )
+    pipeline_case = [
+        BatchGenerate(func=gen_tbl, outputs=["tbl_left"], kwargs=dict(df=test_df_left)),
+        BatchGenerate(func=gen_tbl, outputs=["tbl_right"], kwargs=dict(df=test_df_right)),
+        BatchTransform(
+            func=cross_merge_func,
+            inputs=[
+                InputSpec(table="tbl_left", keys={"left_id": "id_left"}),
+                InputSpec(table="tbl_right", keys={"right_id": "id_right"}),
+            ],
+            outputs=[
+                OutputSpec(
+                    table="tbl_left_x_right",
+                    keys={
+                        "left_id": "id_left",
+                        "right_id": "id_right",
+                    },
+                )
+            ],
+            transform_keys=["left_id", "right_id"],
+            chunk_size=6,
+        ),
+    ]
 
-    run_pipeline(ds, catalog, pipeline_case)
+    DatapipeApp(ds, catalog, pipeline_case).run()
 
     assert_datatable_equal(catalog.get_datatable(ds, "tbl_left"), test_df_left)
     assert_datatable_equal(catalog.get_datatable(ds, "tbl_right"), test_df_right)
@@ -341,24 +337,22 @@ def test_complex_reverse_cross_merge_scenary(dbconn, test_case):
     def gen_tbl(df):
         yield df
 
-    pipeline_case = Pipeline(
-        [
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl_left_x_right"],
-                kwargs=dict(df=test_df_left_x_right),
-            ),
-            BatchTransform(
-                func=reverse_cross_merge_func,
-                inputs=["tbl_left_x_right"],
-                outputs=["tbl_left", "tbl_right"],
-                transform_keys=transform_keys,
-                chunk_size=6,
-                kwargs=dict(left_schema=left_schema, right_schema=right_schema),
-            ),
-        ]
-    )
-    run_pipeline(ds, catalog, pipeline_case)
+    pipeline_case = [
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl_left_x_right"],
+            kwargs=dict(df=test_df_left_x_right),
+        ),
+        BatchTransform(
+            func=reverse_cross_merge_func,
+            inputs=["tbl_left_x_right"],
+            outputs=["tbl_left", "tbl_right"],
+            transform_keys=transform_keys,
+            chunk_size=6,
+            kwargs=dict(left_schema=left_schema, right_schema=right_schema),
+        ),
+    ]
+    DatapipeApp(ds, catalog, pipeline_case).run()
     tbl_left_x_right = catalog.get_datatable(ds, "tbl_left_x_right")
     tbl_left = catalog.get_datatable(ds, "tbl_left")
     tbl_right = catalog.get_datatable(ds, "tbl_right")

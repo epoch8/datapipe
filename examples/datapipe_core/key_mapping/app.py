@@ -25,7 +25,7 @@ Result tables
 import pandas as pd
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline
+from datapipe.compute import Catalog, DatapipeApp
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -105,34 +105,32 @@ def enrich_posts(posts_df: pd.DataFrame, authors_df: pd.DataFrame) -> pd.DataFra
     )
 
 
-pipeline = Pipeline(
-    [
-        BatchGenerate(generate_authors, outputs=[Author]),
-        BatchGenerate(generate_posts, outputs=[Post]),
-        BatchTransform(
-            enrich_posts,
-            # "post_id" and "author_id" are virtual transform-level keys.
-            # Each unique (post_id, author_id) pair is one unit of incremental work.
-            transform_keys=["post_id", "author_id"],
-            inputs=[
-                # Post.id    → transform key "post_id"
-                # Post.author_id → transform key "author_id"  (direct match by name would work
-                #                  here, but listed explicitly for clarity)
-                InputSpec(Post, keys={"post_id": "id", "author_id": "author_id"}),
-                # Author.id → transform key "author_id"
-                # Without this mapping the engine would try to join on a column named
-                # "author_id" in the authors meta table, which doesn't exist there.
-                InputSpec(Author, keys={"author_id": "id"}),
-            ],
-            outputs=[
-                # PostCard.id stores the post id, so transform key "post_id" → column "id".
-                # This ensures that when a post is deleted, the corresponding post_card row
-                # is also removed (the engine knows to look up post_card by id = post_id).
-                OutputSpec(PostCard, keys={"post_id": "id"}),
-            ],
-        ),
-    ]
-)
+pipeline = [
+    BatchGenerate(generate_authors, outputs=[Author]),
+    BatchGenerate(generate_posts, outputs=[Post]),
+    BatchTransform(
+        enrich_posts,
+        # "post_id" and "author_id" are virtual transform-level keys.
+        # Each unique (post_id, author_id) pair is one unit of incremental work.
+        transform_keys=["post_id", "author_id"],
+        inputs=[
+            # Post.id    → transform key "post_id"
+            # Post.author_id → transform key "author_id"  (direct match by name would work
+            #                  here, but listed explicitly for clarity)
+            InputSpec(Post, keys={"post_id": "id", "author_id": "author_id"}),
+            # Author.id → transform key "author_id"
+            # Without this mapping the engine would try to join on a column named
+            # "author_id" in the authors meta table, which doesn't exist there.
+            InputSpec(Author, keys={"author_id": "id"}),
+        ],
+        outputs=[
+            # PostCard.id stores the post id, so transform key "post_id" → column "id".
+            # This ensures that when a post is deleted, the corresponding post_card row
+            # is also removed (the engine knows to look up post_card by id = post_id).
+            OutputSpec(PostCard, keys={"post_id": "id"}),
+        ],
+    ),
+]
 
 
 dbconn = DBConn(sqlite_connstr(), sqla_metadata=Base.metadata)
@@ -141,10 +139,8 @@ app = DatapipeApp(ds, Catalog({}), pipeline)
 
 
 if __name__ == "__main__":
-    from datapipe.compute import run_steps
-
     ds.meta_dbconn.sqla_metadata.create_all(ds.meta_dbconn.con)
-    run_steps(app.ds, app.steps)
+    app.run()
 
     # Show result
     import sqlalchemy as sa

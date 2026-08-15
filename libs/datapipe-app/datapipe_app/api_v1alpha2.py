@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
-from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, run_steps
+from datapipe.compute import Catalog, ComputeStep, DatapipeApp, DataStore
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.store.database import TableStoreDB
@@ -187,7 +187,7 @@ class RunningStepsHelper(Dict[str, models.RunStepResponse]):
 
 
 def run_step(
-    ds: DataStore,
+    app: DatapipeApp,
     step: BaseBatchTransformStep,
     transform_state: models.RunStepResponse,
     filters: Optional[List[Dict]],
@@ -239,15 +239,14 @@ def run_step(
 
     # FIXME this should not be necessary
     _step.get_full_process_ids = get_full_process_ids  # type: ignore
-    run_steps(ds=ds, steps=[_step])
+    app.run(steps=[_step])
 
 
-def make_app(
-    ds: DataStore,
-    catalog: Catalog,
-    pipeline: Pipeline,
-    steps: List[ComputeStep],
-) -> FastAPI:
+def make_app(datapipe_app: DatapipeApp) -> FastAPI:
+    ds = datapipe_app.ds
+    catalog = datapipe_app.catalog
+    steps = datapipe_app.steps
+
     app = FastAPI()
 
     @app.get("/graph", response_model=models.GraphResponse)
@@ -348,7 +347,7 @@ def make_app(
                     )
                     _ = asyncio.create_task(_running_steps_helper.update_transform_status(transform=transform))
                     run_step_thread = asyncio.to_thread(
-                        run_step, ds, step, _running_steps_helper[transform], json_data.filters
+                        run_step, datapipe_app, step, _running_steps_helper[transform], json_data.filters
                     )
                     run_steps_task = asyncio.create_task(run_step_thread)
                     run_steps_task.add_done_callback(lambda _: _running_steps_helper.set_job_as_finished(transform))

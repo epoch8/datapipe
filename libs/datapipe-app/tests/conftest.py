@@ -3,7 +3,7 @@ from typing import Tuple
 
 import pandas as pd
 import pytest
-from datapipe.compute import Catalog, DataStore, Pipeline, Table
+from datapipe.compute import Catalog, DataStore, Table
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.store.database import DBConn, TableStoreDB
 from sqlalchemy import JSON, Boolean, Column, Integer, String
@@ -88,15 +88,13 @@ def app():
                 pd.DataFrame.from_records(res_lang),
             )
 
-        pipeline = Pipeline(
-            steps=[
-                BatchTransform(
-                    agg_profile,
-                    inputs=["events"],
-                    outputs=["user_profile", "user_lang"],
-                ),
-            ]
-        )
+        pipeline = [
+            BatchTransform(
+                agg_profile,
+                inputs=["events"],
+                outputs=["user_profile", "user_lang"],
+            ),
+        ]
 
         ds = DataStore(dbconn, create_meta_table=False)
 

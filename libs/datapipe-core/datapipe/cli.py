@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
 
-from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
+from datapipe.compute import ComputeStep, DatapipeApp
 from datapipe.executor import Executor, SingleThreadExecutor
 from datapipe.migrations import v013 as migrations_v013
 from datapipe.run_callback import CompositeRunCallback
@@ -138,7 +138,7 @@ def _run_steps_cli(
         else []
     )
     run_config = RunConfig(callback=CompositeRunCallback([StdoutRunCallback(), *loaded_callbacks]))
-    run_steps(app.ds, steps, executor=executor, run_config=run_config)
+    app.run(steps=steps, executor=executor, run_config=run_config)
 
 
 @click.group()
@@ -572,7 +572,7 @@ def run_changelist(
                 executor=executor,
             )
 
-            run_steps_changelist(app.ds, steps_to_run, changes, executor=executor)
+            app.run_changelist(changes, steps=steps_to_run, executor=executor)
 
             rprint(f"Chunk {cnt}/{idx_count} ended")
             cnt += 1

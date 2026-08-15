@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import Integer
 from sqlalchemy.sql.schema import Column
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -46,20 +46,18 @@ result_tbl = Table(
 )
 
 
-pipeline = Pipeline(
-    [
-        BatchGenerate(
-            generate_data,
-            outputs=[input_tbl],
-        ),
-        BatchTransform(
-            count,
-            inputs=[input_tbl],
-            outputs=[result_tbl],
-            transform_keys=[],
-        ),
-    ]
-)
+pipeline = [
+    BatchGenerate(
+        generate_data,
+        outputs=[input_tbl],
+    ),
+    BatchTransform(
+        count,
+        inputs=[input_tbl],
+        outputs=[result_tbl],
+        transform_keys=[],
+    ),
+]
 
 
 ds = DataStore(DBConn(sqlite_connstr()))
@@ -68,6 +66,4 @@ app = DatapipeApp(ds, Catalog({}), pipeline)
 
 
 if __name__ == "__main__":
-    from datapipe.compute import run_steps
-
-    run_steps(ds, app.steps, None, None)
+    app.run()

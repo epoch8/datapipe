@@ -45,33 +45,31 @@ def _make_catalog(dbconn):
 
 
 def _run_find_best(ds, catalog, *, func="max", threshold=None, group_by=None):
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     from datapipe_ml.metrics.model_selection import FindBestModel
 
-    steps = build_compute(
+    app = DatapipeApp(
         ds,
         catalog,
-        Pipeline(
-            [
-                FindBestModel(
-                    input__model="model",
-                    input__model__metrics_on__subset="model_metrics",
-                    output__attr__model__is_best="attr__model__is_best",
-                    output__best_model="best_model",
-                    subset_id="val",
-                    is_best__name="model__is_best",
-                    primary_keys=["model_id"],
-                    metric__name="metric",
-                    func=func,
-                    create_table=True,
-                    threshold=threshold,
-                    group_by=group_by,
-                )
-            ]
-        ),
+        [
+            FindBestModel(
+                input__model="model",
+                input__model__metrics_on__subset="model_metrics",
+                output__attr__model__is_best="attr__model__is_best",
+                output__best_model="best_model",
+                subset_id="val",
+                is_best__name="model__is_best",
+                primary_keys=["model_id"],
+                metric__name="metric",
+                func=func,
+                create_table=True,
+                threshold=threshold,
+                group_by=group_by,
+            )
+        ],
     )
-    run_steps(ds, steps)
+    app.run()
 
 
 def test_find_best_model_marks_max_metric(base_datastore, dbconn):

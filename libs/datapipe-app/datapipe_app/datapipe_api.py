@@ -1,9 +1,9 @@
 import logging
 import os.path
 import sys
-from typing import Optional
+from typing import Optional, Sequence
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline
+from datapipe.compute import Catalog, DatapipeApp, PipelineStep
 from datapipe.datatable import DataStore
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +19,7 @@ class DatapipeAPI(FastAPI, DatapipeApp):
         self,
         ds: Optional[DataStore] = None,
         catalog: Optional[Catalog] = None,
-        pipeline: Optional[Pipeline] = None,
+        pipeline: Optional[Sequence[PipelineStep]] = None,
         app: Optional[DatapipeApp] = None,
     ):
         if app is not None:
@@ -53,13 +53,13 @@ class DatapipeAPI(FastAPI, DatapipeApp):
 
         self.api.mount(
             "/v1alpha1",
-            api_v1alpha1.make_app(self.ds, self.catalog, self.pipeline, self.steps),
+            api_v1alpha1.make_app(self),
             name="v1alpha1",
         )
 
         self.api.mount(
             "/v1alpha2",
-            api_v1alpha2.make_app(self.ds, self.catalog, self.pipeline, self.steps),
+            api_v1alpha2.make_app(self),
             name="v1alpha2",
         )
 

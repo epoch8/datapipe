@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform
@@ -130,18 +130,16 @@ def test_complex_pipeline(dbconn):
         df__output["attirbute"] = "attribute"
         return df__output
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                func=complex_function,
-                inputs=["item", "pipeline", "prediction", "keypoint"],
-                outputs=["output"],
-                transform_keys=["item_id", "pipeline_id"],
-                chunk_size=50,
-            ),
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
+    pipeline = [
+        BatchTransform(
+            func=complex_function,
+            inputs=["item", "pipeline", "prediction", "keypoint"],
+            outputs=["output"],
+            transform_keys=["item_id", "pipeline_id"],
+            chunk_size=50,
+        ),
+    ]
+    app = DatapipeApp(ds, catalog, pipeline)
     ds.get_table("item").store_chunk(TEST__ITEM)
     ds.get_table("pipeline").store_chunk(TEST__PIPELINE)
     ds.get_table("prediction").store_chunk(TEST__PREDICTION)
@@ -153,7 +151,7 @@ def test_complex_pipeline(dbconn):
         TEST__KEYPOINT,
         idx=cast(IndexDF, pd.DataFrame(columns=["item_id", "pipeline_id"])),
     )
-    run_steps(ds, steps)
+    app.run()
     assert_datatable_equal(ds.get_table("output"), TEST_RESULT)
 
 
@@ -232,37 +230,35 @@ def test_complex_pipeline_with_index_aliases(dbconn):
         df__output["attirbute"] = "attribute"
         return df__output
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                func=complex_function,
-                inputs=[
-                    InputSpec(table="item", keys={"post_item_id": "item_id"}),
-                    InputSpec(table="pipeline", keys={"post_pipeline_id": "pipeline_id"}),
-                    InputSpec(
-                        table="prediction",
-                        keys={
-                            "post_item_id": "item_id",
-                            "post_pipeline_id": "pipeline_id",
-                        },
-                    ),
-                    "keypoint",
-                ],
-                outputs=[
-                    OutputSpec(
-                        table="output",
-                        keys={
-                            "post_item_id": "item_id",
-                            "post_pipeline_id": "pipeline_id",
-                        },
-                    )
-                ],
-                transform_keys=["post_item_id", "post_pipeline_id"],
-                chunk_size=50,
-            ),
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
+    pipeline = [
+        BatchTransform(
+            func=complex_function,
+            inputs=[
+                InputSpec(table="item", keys={"post_item_id": "item_id"}),
+                InputSpec(table="pipeline", keys={"post_pipeline_id": "pipeline_id"}),
+                InputSpec(
+                    table="prediction",
+                    keys={
+                        "post_item_id": "item_id",
+                        "post_pipeline_id": "pipeline_id",
+                    },
+                ),
+                "keypoint",
+            ],
+            outputs=[
+                OutputSpec(
+                    table="output",
+                    keys={
+                        "post_item_id": "item_id",
+                        "post_pipeline_id": "pipeline_id",
+                    },
+                )
+            ],
+            transform_keys=["post_item_id", "post_pipeline_id"],
+            chunk_size=50,
+        ),
+    ]
+    app = DatapipeApp(ds, catalog, pipeline)
     ds.get_table("item").store_chunk(TEST__ITEM)
     ds.get_table("pipeline").store_chunk(TEST__PIPELINE)
     ds.get_table("prediction").store_chunk(TEST__PREDICTION)
@@ -274,7 +270,7 @@ def test_complex_pipeline_with_index_aliases(dbconn):
         TEST__KEYPOINT,
         idx=cast(IndexDF, pd.DataFrame(columns=["post_item_id", "post_pipeline_id"])),
     )
-    run_steps(ds, steps)
+    app.run()
     assert_datatable_equal(ds.get_table("output"), test_result)
 
 
@@ -379,26 +375,24 @@ def test_complex_train_pipeline(dbconn):
         )
         return df__pipeline__total, df__pipeline__is_trained_on__frozen_dataset__total
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                func=train,
-                inputs=[
-                    "frozen_dataset",
-                    "train_config",
-                    "pipeline",
-                    "pipeline__is_trained_on__frozen_dataset",
-                ],
-                outputs=["pipeline", "pipeline__is_trained_on__frozen_dataset"],
-                transform_keys=["frozen_dataset_id", "train_config_id"],
-                chunk_size=1,
-            ),
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
+    pipeline = [
+        BatchTransform(
+            func=train,
+            inputs=[
+                "frozen_dataset",
+                "train_config",
+                "pipeline",
+                "pipeline__is_trained_on__frozen_dataset",
+            ],
+            outputs=["pipeline", "pipeline__is_trained_on__frozen_dataset"],
+            transform_keys=["frozen_dataset_id", "train_config_id"],
+            chunk_size=1,
+        ),
+    ]
+    app = DatapipeApp(ds, catalog, pipeline)
     ds.get_table("frozen_dataset").store_chunk(TEST__FROZEN_DATASET)
     ds.get_table("train_config").store_chunk(TEST__TRAIN_CONFIG)
-    run_steps(ds, steps)
+    app.run()
     assert len(ds.get_table("pipeline").get_data()) == len(TEST__FROZEN_DATASET) * len(TEST__TRAIN_CONFIG)
     assert len(ds.get_table("pipeline__is_trained_on__frozen_dataset").get_data()) == len(TEST__FROZEN_DATASET) * len(
         TEST__TRAIN_CONFIG
@@ -499,38 +493,35 @@ def complex_transform_with_many_recordings(dbconn, N: int):
         df__result["result"] = df__result["attribute"] - df__result["prediction__attribite"]
         return df__result[["image_id", "model_id", "result"]]
 
-    pipeline = Pipeline(
-        [
-            BatchGenerate(
-                func=gen_tbls,
-                outputs=[
-                    "tbl_image",
-                    "tbl_image__attribute",
-                    "tbl_prediction",
-                    "tbl_best_model",
-                ],
-                kwargs=dict(
-                    df1=test_df__image,
-                    df2=test_df__image__attribute,
-                    df3=test_df__prediction,
-                    df4=test_df__best_model,
-                ),
+    pipeline = [
+        BatchGenerate(
+            func=gen_tbls,
+            outputs=[
+                "tbl_image",
+                "tbl_image__attribute",
+                "tbl_prediction",
+                "tbl_best_model",
+            ],
+            kwargs=dict(
+                df1=test_df__image,
+                df2=test_df__image__attribute,
+                df3=test_df__prediction,
+                df4=test_df__best_model,
             ),
-            BatchTransform(
-                func=get_some_prediction_only_on_best_model,
-                inputs=[
-                    Required("tbl_image"),  # image_id
-                    "tbl_image__attribute",  # image_id, attribute
-                    Required("tbl_prediction"),  # image_id, model_id, prediction__attribite
-                    Required("tbl_best_model"),  # model_id
-                ],
-                outputs=["tbl_output"],
-                transform_keys=["image_id", "model_id"],
-            ),
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
-    run_steps(ds, steps)
+        ),
+        BatchTransform(
+            func=get_some_prediction_only_on_best_model,
+            inputs=[
+                Required("tbl_image"),  # image_id
+                "tbl_image__attribute",  # image_id, attribute
+                Required("tbl_prediction"),  # image_id, model_id, prediction__attribite
+                Required("tbl_best_model"),  # model_id
+            ],
+            outputs=["tbl_output"],
+            transform_keys=["image_id", "model_id"],
+        ),
+    ]
+    DatapipeApp(ds, catalog, pipeline).run()
     test__df_output = pd.DataFrame({"image_id": range(N), "model_id": [4] * N, "result": [0] * N})
     assert_df_equal(
         ds.get_table("tbl_output").get_data(),

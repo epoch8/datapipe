@@ -9,10 +9,9 @@ from cv_pipeliner.metrics.keypoints import get_df_keypoints_metrics
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import ExecutorConfig
@@ -448,10 +447,9 @@ class CountMetrics_Subset_KeypointsModel(PipelineStep):
         )
 
         ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=wrap_ground_truth_inputs(
+        pipeline = [
+            BatchTransform(
+                func=wrap_ground_truth_inputs(
                         count_keypoints_metrics_on_image,
                         n_ground_truth_inputs=len(ground_truth_inputs),
                         primary_keys=self.primary_keys,
@@ -503,8 +501,7 @@ class CountMetrics_Subset_KeypointsModel(PipelineStep):
                     chunk_size=1,
                 ),
             ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        return DatapipeApp(ds, catalog, pipeline).steps
 
 
 def _check_model_id_consistency(
@@ -671,33 +668,31 @@ class CountMetrics_FrozenDataset_KeypointsModel(PipelineStep):
                 ).table_store
             ),
         )
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=count_keypoints_metrics_on_frozen_dataset,
-                    inputs=[
-                        required_pipeline_input(self.input__keypoints_frozen_dataset__has__image_gt),
-                        self.input__keypoints_model,
-                        required_pipeline_input(self.input__keypoints_prediction),
-                    ],
-                    outputs=[self.output__keypoints_model__metrics_on__frozen_dataset],
-                    transform_keys=self.keypoints_model_primary_keys
-                    + ["subset_id", self.keypoints_frozen_dataset_id__name],
-                    executor_config=self.executor_config,
-                    labels=self.labels,
-                    kwargs=dict(
-                        primary_keys=self.primary_keys,
-                        minimum_iou=self.minimum_iou,
-                        bbox_id__name=self.bbox_id__name,
-                        keypoints_model_primary_keys=self.keypoints_model_primary_keys,
-                        keypoints_frozen_dataset_id__name=self.keypoints_frozen_dataset_id__name,
-                        image_data_matching_class=self.image_data_matching_class,
-                        class_names=self.class_names,
-                        sigma=self.sigma,
-                    ),
-                    chunk_size=1,
-                    filters=self.filters,
+        pipeline = [
+            BatchTransform(
+                func=count_keypoints_metrics_on_frozen_dataset,
+                inputs=[
+                    required_pipeline_input(self.input__keypoints_frozen_dataset__has__image_gt),
+                    self.input__keypoints_model,
+                    required_pipeline_input(self.input__keypoints_prediction),
+                ],
+                outputs=[self.output__keypoints_model__metrics_on__frozen_dataset],
+                transform_keys=self.keypoints_model_primary_keys
+                + ["subset_id", self.keypoints_frozen_dataset_id__name],
+                executor_config=self.executor_config,
+                labels=self.labels,
+                kwargs=dict(
+                    primary_keys=self.primary_keys,
+                    minimum_iou=self.minimum_iou,
+                    bbox_id__name=self.bbox_id__name,
+                    keypoints_model_primary_keys=self.keypoints_model_primary_keys,
+                    keypoints_frozen_dataset_id__name=self.keypoints_frozen_dataset_id__name,
+                    image_data_matching_class=self.image_data_matching_class,
+                    class_names=self.class_names,
+                    sigma=self.sigma,
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+                chunk_size=1,
+                filters=self.filters,
+            ),
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps

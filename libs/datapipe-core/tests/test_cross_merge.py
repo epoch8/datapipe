@@ -5,14 +5,7 @@ import pytest
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer
 
-from datapipe.compute import (
-    Catalog,
-    Pipeline,
-    Table,
-    run_pipeline,
-    run_steps,
-    run_steps_changelist,
-)
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore, DataTable
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import BatchTransform, BatchTransformStep
@@ -78,20 +71,22 @@ def gen_tbl(df):
 
 
 def gen_pipeline(df_left, df_right):
-    return Pipeline(
-        [
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl_left"],
-                kwargs=dict(df=df_left),
-            ),
-            BatchGenerate(
-                func=gen_tbl,
-                outputs=["tbl_right"],
-                kwargs=dict(df=df_right),
-            ),
-        ]
-    )
+    return [
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl_left"],
+            kwargs=dict(df=df_left),
+        ),
+        BatchGenerate(
+            func=gen_tbl,
+            outputs=["tbl_right"],
+            kwargs=dict(df=df_right),
+        ),
+    ]
+
+
+def _app(ds: DataStore) -> DatapipeApp:
+    return DatapipeApp(ds, Catalog({}), [])
 
 
 @pytest.fixture
@@ -135,8 +130,8 @@ def test_cross_merge_scenary_clear(ds_catalog_pipeline_tbls):
         cross_step,
     ) = ds_catalog_pipeline_tbls
     # Чистый пайплайн
-    run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
-    run_steps(ds, [cross_step])
+    DatapipeApp(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT)).run()
+    _app(ds).run(steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
 
 
@@ -150,10 +145,10 @@ def test_cross_merge_scenary_clear_changelist(ds_catalog_pipeline_tbls):
         cross_step,
     ) = ds_catalog_pipeline_tbls
     # Чистый пайплайн
-    run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
+    DatapipeApp(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT)).run()
     changelist = ChangeList()
     changelist.append("tbl_left", idx=tbl_left.get_data())
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
 
 
@@ -172,30 +167,30 @@ def test_cross_merge_scenary_clear_changelist_null_values_check(
     df_idx_left = tbl_left.store_chunk(TEST_DF_LEFT)
     changelist = ChangeList()
     changelist.append("tbl_left", df_idx_left)
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
     changelist = ChangeList()
     changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
 
     # Добавляем 2ую табличку
     df_idx_right = tbl_right.store_chunk(TEST_DF_RIGHT)
     changelist = ChangeList()
     changelist.append("tbl_right", df_idx_right)
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))
     changelist = ChangeList()
     changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
 
     changelist = ChangeList()
     changelist.append("tbl_left", TEST_DF_LEFT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
     changelist.append("tbl_right", TEST_DF_RIGHT_ADDED)  # type: ignore  # притворяемся, что "данные есть"
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
 
     changelist = ChangeList()
     changelist.append("tbl_left", TEST_DF_LEFT_FINAL)  # type: ignore  # смесь реальных и пустых индексов
     changelist.append("tbl_right", TEST_DF_RIGHT_FINAL)  # type: ignore  # смесь реальных и пустых индексов
-    run_steps_changelist(ds, [cross_step], changelist)
+    _app(ds).run_changelist(changelist, steps=[cross_step])
 
 
 def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
@@ -210,10 +205,10 @@ def test_cross_merge_scenary_changed_left(ds_catalog_pipeline_tbls):
     test_cross_merge_scenary_clear(ds_catalog_pipeline_tbls)
     # Случай 1: меняется что-то слева
     # -> change должно быть равным числу изменненых строк слева помножить на полное число строк справа
-    run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
+    DatapipeApp(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT)).run()
     changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT)
-    run_steps(ds, [cross_step])
+    _app(ds).run(steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT))
 
 
@@ -229,10 +224,10 @@ def test_cross_merge_scenary_changed_right(ds_catalog_pipeline_tbls):
     test_cross_merge_scenary_clear(ds_catalog_pipeline_tbls)
     # Случай 2: меняется что-то справа
     # -> change должно быть равным полному числу строк слева помножить на измененное число строк справа
-    run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL))
+    DatapipeApp(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL)).run()
     changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
-    run_steps(ds, [cross_step])
+    _app(ds).run(steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT_FINAL))
 
 
@@ -253,14 +248,14 @@ def test_cross_merge_scenary_changed_left_and_right(ds_catalog_pipeline_tbls):
     #   - измененному числу строк помножить на старое полное число строк справа
     #   плюс
     #   - измененное число строк слева помножить на измененное число строк справа
-    run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
+    DatapipeApp(ds, catalog, gen_pipeline(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL)).run()
     changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == (
         len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
         + len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED)
         + len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT_ADDED)
     )
-    run_steps(ds, [cross_step])
+    _app(ds).run(steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT_FINAL, TEST_DF_RIGHT_FINAL))
 
 
@@ -283,12 +278,12 @@ def test_cross_merge_scenary_changed_left_and_right_then_deleted_left_and_right(
     #   - удаленное числу строк помножить на старое полное число строк справа
     #   плюс
     #   - удаленное число строк слева помножить на удаленное число строк справа
-    run_pipeline(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT))
+    DatapipeApp(ds, catalog, gen_pipeline(TEST_DF_LEFT, TEST_DF_RIGHT)).run()
     changed_idxs = cross_step.meta.get_changed_idx_count(ds)
     assert changed_idxs == (
         len(TEST_DF_LEFT) * len(TEST_DF_RIGHT_ADDED)
         + len(TEST_DF_RIGHT) * len(TEST_DF_LEFT_ADDED)
         + len(TEST_DF_LEFT_ADDED) * len(TEST_DF_RIGHT_ADDED)
     )
-    run_steps(ds, [cross_step])
+    _app(ds).run(steps=[cross_step])
     assert_datatable_equal(tbl_left_x_right, get_df_cross_merge(TEST_DF_LEFT, TEST_DF_RIGHT))

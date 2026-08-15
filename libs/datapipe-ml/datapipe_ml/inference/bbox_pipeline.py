@@ -10,7 +10,7 @@ import pandas as pd
 from cv_pipeliner import ImageData
 from cv_pipeliner.inferencers.detection.core import DetectionModelSpec
 from cv_pipeliner.inferencers.pipeline import PipelineModelSpec
-from datapipe.compute import Catalog, ComputeStep, Pipeline, Table, build_compute
+from datapipe.compute import Catalog, ComputeStep, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
 from datapipe.run_config import LabelDict
@@ -447,22 +447,20 @@ def build_bbox_inference_compute(ds: DataStore, catalog: Catalog, config: BboxIn
         outputs=[config.output__prediction],
     )
 
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                func=transform_func,
-                name=step_name,
-                inputs=inputs,
-                outputs=[config.output__prediction],
-                transform_keys=stable_unique(config.primary_keys + model_primary_keys),
-                chunk_size=config.chunk_size,
-                labels=config.labels,
-                order_by=model_primary_keys,
-                order="desc",
-                kwargs=kwargs,
-                executor_config=config.executor_config,
-                filters=config.filters,
-            ),
-        ]
-    )
-    return build_compute(ds, catalog, pipeline)
+    pipeline = [
+        BatchTransform(
+            func=transform_func,
+            name=step_name,
+            inputs=inputs,
+            outputs=[config.output__prediction],
+            transform_keys=stable_unique(config.primary_keys + model_primary_keys),
+            chunk_size=config.chunk_size,
+            labels=config.labels,
+            order_by=model_primary_keys,
+            order="desc",
+            kwargs=kwargs,
+            executor_config=config.executor_config,
+            filters=config.filters,
+        ),
+    ]
+    return DatapipeApp(ds, catalog, pipeline).steps
