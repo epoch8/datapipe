@@ -22,6 +22,8 @@ unused-type-ignore-comment = "ignore"
 redundant-cast = "ignore"
 
 [dependency-groups]
-dev = [
-    "ty>=0.0.65",
-]
+dev = ["ty>=0.0.65"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
+testpaths = ["libs"]

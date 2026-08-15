@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 import pytest
-
 from datapipe_ml.training.sky_vast.serialization import (
     dumps_to_text,
     loads_from_text,
@@ -24,9 +23,9 @@ from datapipe_ml.training.specs import (
     TrainingLaunchRequest,
     build_training_launcher,
 )
-from tests.helpers.training_smoke import assert_yolov8_training_artifacts
 
-from tests.helpers.test_env import load_test_env
+from .helpers.test_env import load_test_env
+from .helpers.training_smoke import assert_yolov8_training_artifacts
 
 pytestmark = [pytest.mark.slow, pytest.mark.training]
 
@@ -71,9 +70,7 @@ def _sky_vast_instance_type(offer: dict[str, Any]) -> str:
     query_ram_mb = int(os.getenv("DATAPIPE_ML_SKY_VAST_QUERY_RAM_MB", "1024"))
     offer_id = int(offer.get("id") or 0)
     cpu_token = int(offer.get("cpu_cores") or 1) * 1_000_000_000 + offer_id
-    return (
-        f"{int(offer.get('num_gpus') or 1)}x-{str(offer['gpu_name']).replace(' ', '_')}-" f"{cpu_token}-{query_ram_mb}"
-    )
+    return f"{int(offer.get('num_gpus') or 1)}x-{str(offer['gpu_name']).replace(' ', '_')}-{cpu_token}-{query_ram_mb}"
 
 
 def _write_live_sky_vast_catalog(sky_home: Path) -> None:
@@ -164,7 +161,7 @@ def _write_sky_vast_patch(patch_dir: Path) -> None:
 
 
 def _apply_sky_vast_runtime_patches() -> None:
-    from tests.helpers import sky_vast_sitecustomize
+    from .helpers import sky_vast_sitecustomize
 
     sky_vast_sitecustomize._patch_sky_vast_launch()
 
@@ -431,7 +428,9 @@ def _sky_vast_config(
         cluster_name=cluster_name,
         infra=infra,
         instance_type=instance_type,
-        accelerators="" if instance_type else (accelerators if accelerators is not None else os.getenv("DATAPIPE_ML_SKY_VAST_ACCELERATORS", "")),
+        accelerators=""
+        if instance_type
+        else (accelerators if accelerators is not None else os.getenv("DATAPIPE_ML_SKY_VAST_ACCELERATORS", "")),
         cpus=os.getenv("DATAPIPE_ML_SKY_VAST_CPUS", "1+"),
         memory=os.getenv("DATAPIPE_ML_SKY_VAST_MEMORY", "1+"),
         disk_size=os.getenv("DATAPIPE_ML_SKY_VAST_DISK_SIZE", "20GB"),
@@ -602,7 +601,6 @@ def test_sky_vast_rewrites_remote_results_back_to_local_paths(tmp_path):
 
 def test_sky_vast_periodic_output_sync_copies_remote_outputs(tmp_path):
     import fsspec
-
     from datapipe_ml.training.sky_vast.launcher import SkyVastTrainingLauncher
     from datapipe_ml.training.sync import PeriodicSyncScheduler
 
@@ -633,7 +631,6 @@ def test_sky_vast_periodic_output_sync_copies_remote_outputs(tmp_path):
 
 def test_core_files_copy_tree_skips_copy_when_paths_are_same():
     import fsspec
-
     from datapipe_ml.core.files import copy_tree_between_fs
 
     fs = fsspec.filesystem("memory")
@@ -649,7 +646,6 @@ def test_core_files_copy_tree_skips_copy_when_paths_are_same():
 
 def test_core_files_parallel_copy_copies_tree(tmp_path):
     import fsspec
-
     from datapipe_ml.core.files import copy_tree_between_fs
 
     src_fs = fsspec.filesystem("memory")
@@ -711,8 +707,7 @@ def test_sky_vast_runtime_bootstrap_is_available(sky_vast_environment):
 def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
     if not _sky_vast_available():
         pytest.skip(
-            "Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY "
-            "(tests/.env.test.local or shell env) to run this test."
+            "Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY (tests/.env.test.local or shell env) to run this test."
         )
     if _sky_vast_all_candidates_are_cached():
         pytest.skip("All US GPU offers on Vast were already marked bad in this test process.")
@@ -726,13 +721,12 @@ def test_sky_vast_launches_minimal_worker_from_scratch(sky_vast_environment):
 def test_yolov8_detection_training_smoke_sky_vast(tmp_path, sky_vast_environment):
     if not _sky_vast_available():
         pytest.skip(
-            "Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY "
-            "(tests/.env.test.local or shell env) to run this test."
+            "Set DATAPIPE_ML_RUN_SKY_VAST=1 and VAPI_API_KEY (tests/.env.test.local or shell env) to run this test."
         )
     if _sky_vast_all_candidates_are_cached():
         pytest.skip("All US GPU offers on Vast were already marked bad in this test process.")
 
-    from tests.helpers.training_smoke import (
+    from .helpers.training_smoke import (
         assert_model_artifact,
         detection_freeze_step,
         detection_train_step,
