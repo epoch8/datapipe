@@ -1,0 +1,72 @@
+# Hand-maintained map: public symbol name → mdBook page under docs/source/.
+# Used by docs/scripts/inventory_core.py. Add a row when a new pipe surface lands.
+#
+# Coverage rule (CI --strict): every inventoried symbol must have an existing page.
+# Stub / "Needs review" pages still count as covered until --fail-on-stubs is enabled.
+
+symbols:
+  # Pipeline / catalog
+  Table: reference/table.md
+  Catalog: reference/pipeline-catalog.md
+  Pipeline: reference/pipeline-catalog.md
+  PipelineStep: reference/pipeline-catalog.md
+  ComputeStep: reference/pipeline-catalog.md
+  DatapipeApp: reference/pipeline-catalog.md
+  build_compute: reference/pipeline-catalog.md
+  run_pipeline: reference/pipeline-catalog.md
+  run_steps: reference/pipeline-catalog.md
+  "pipeline:run_changelist": reference/pipeline-catalog.md
+  run_steps_changelist: reference/pipeline-catalog.md
+  DataTable: reference/table.md
+  DataStore: reference/table.md
+
+  # Types
+  Required: reference/types.md
+  InputSpec: reference/types.md
+  OutputSpec: reference/types.md
+  ChangeList: reference/types.md
+
+  # Core pipeline steps
+  BatchTransform: reference/steps/batch-transform.md
+  DatatableBatchTransform: reference/steps/batch-transform.md
+  BatchGenerate: reference/steps/batch-generate.md
+  UpdateExternalTable: reference/steps/update-external-table.md
+  DatatableTransform: reference/steps/datatable-transform.md
+
+  # Stores
+  TableStore: reference/stores/index.md
+  TableStoreCaps: reference/stores/index.md
+  TableStoreDB: reference/stores/database.md
+  TableStoreFiledir: reference/stores/filedir.md
+  RedisStore: reference/stores/redis.md
+  ElasticStore: reference/stores/elastic.md
+  QdrantStore: reference/stores/qdrant.md
+  QdrantShardedStore: reference/stores/qdrant.md
+  MilvusStore: reference/stores/milvus.md
+  # No dedicated pages yet — map to index so inventory is complete; split later.
+  Neo4JStore: reference/stores/index.md
+  TableStoreExcel: reference/stores/index.md
+  TableStoreJsonLine: reference/stores/index.md
+
+  # Executors
+  Executor: reference/executors.md
+  ExecutorConfig: reference/executors.md
+  SingleThreadExecutor: reference/executors.md
+  RayExecutor: reference/executors.md
+
+  # CLI surface (one page covers the click tree)
+  cli: reference/cli.md
+  table: reference/cli.md
+  table_list: reference/cli.md
+  main_run: reference/cli.md
+  db: reference/cli.md
+  create_all: reference/cli.md
+  lint: reference/cli.md
+  step: reference/cli.md
+  step_list: reference/cli.md
+  step_run: reference/cli.md
+  run_idx: reference/cli.md
+  "cli:run_changelist": reference/cli.md
+  fill_metadata: reference/cli.md
+  reset_metadata: reference/cli.md
+  migrate_transform_tables: reference/cli.md

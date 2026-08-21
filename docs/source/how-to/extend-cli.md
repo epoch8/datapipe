@@ -1,33 +1,72 @@
-# Extending `datapipe` cli
+# How to Extend the Datapipe CLI
 
-> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+Add custom Click commands to the `datapipe` CLI via Python entry points.
 
-## Entry point
+## Goal
 
-Datapipe offers a way to add additional cli commands. It is achieved by
-utilizing Python entrypoints mechanism.
+Ship project- or package-specific commands (for example start an API server) that share the same loaded pipeline and executor as built-in commands.
 
-Datapipe looks for entrypoints with group name `datapipe.cli` and expects a
-function with signature:
+## Steps
+
+### 1. Write a register function
+
+Datapipe loads every entry point in group `datapipe.cli` and calls it with the root Click group:
 
 ```python
 import click
 
 def register_commands(cli: click.Group) -> None:
-    ...
+    @cli.command()
+    @click.option("--host", type=click.STRING, default="0.0.0.0")
+    @click.option("--port", type=click.INT, default=8000)
+    @click.pass_context
+    def api(ctx: click.Context, host: str, port: int) -> None:
+        pipeline = ctx.obj["pipeline"]
+        executor = ctx.obj.get("executor")
+        # … start your service using pipeline / executor …
 ```
 
-## Context
+Signature: `register_commands(cli: click.Group) -> None`. Add `@cli.command()` / groups as needed.
 
-Plugin can expect some information in `click.Context`:
+### 2. Use context objects
 
-* `ctx.obj["pipeline"]`: `datapipe.compute.DatapipeApp` instance of DatapipeApp
-  with all necessary initialization steps performed
+After global options resolve, `ctx.obj` includes:
 
-* `ctx.obj["executor"]`: `datapipe.executor.Executor` contains an instance of
-  Executor which will be used to perform computation
+| Key | Type | Meaning |
+|---|---|---|
+| `pipeline` | `DatapipeApp` (or app wrapper) | Loaded app from `--pipeline` / `app.py` |
+| `executor` | `Executor` \| `None` | Executor selected via `--executor` |
+
+Parent params (such as the `--pipeline` spec string) are available on `ctx.parent.params` when you need the import path as well as the instance.
+
+### 3. Declare the entry point
+
+**pyproject.toml** (setuptools / hatch / uv):
+
+```toml
+[project.entry-points."datapipe.cli"]
+my_project = "my_project.cli:register_commands"
+```
+
+Install the package into the same environment as `datapipe-core`. New commands appear under `datapipe --help`.
+
+### 4. Run your command
+
+```bash
+datapipe --pipeline my_project.app:app api --port 8000
+```
+
+Global flags (`--pipeline`, `--executor`, `--debug`, …) stay on the root command; subcommand options stay on the subcommand.
+
+## Expected result
+
+- `datapipe --help` lists your command next to `run`, `step`, `db`, …
+- Your command receives an already-initialized pipeline in `ctx.obj["pipeline"]`.
 
 ## Example
 
-To see example of extending `datapipe` cli see `datapipe_app.cli`:
-[https://github.com/epoch8/datapipe-app/blob/master/datapipe_app/cli.py](https://github.com/epoch8/datapipe-app/blob/master/datapipe_app/cli.py)
+`datapipe-app` registers `datapipe api` this way: `datapipe_app.app.cli:register_commands` (`libs/datapipe-app/datapipe_app/app/cli.py`, entry point in that package’s `pyproject.toml`).
+
+## See also
+
+- [CLI Commands](../reference/cli.md)

@@ -1,99 +1,183 @@
 # Datapipe CLI
 
-> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+Command-line entry point: `datapipe` (Click; env prefix `DATAPIPE`).
 
-Datapipe provides `datapipe` CLI tool which can be useful for inspecting
-pipeline, tables, and running steps.
+Loads a `DatapipeApp` and runs / inspects pipeline, steps, tables, and DB helpers.
 
-`datapipe` CLI is build using `click` and provides several levels of commands
-and subcommands each of which can have parameters. `click` parameters are
-level-specific, i.e. global-level arguments should be specified at global level
-only: 
+Module: `datapipe.cli`
 
-`datapipe --debug run`, but NOT `datapipe run --debug`
+---
 
-## Global arguments
+## Global options
 
-### `--pipeline`
+Place **before** the subcommand: `datapipe --debug run`, not `datapipe run --debug`.
 
-By default `datapipe` looks for a file `app.py` in working directory and looks
-for `app` object of type `DatapipeApp` inside this file. `--pipeline` argument
-allows user to provide location for `DatapipeApp` object.
+| Option | Default | Description |
+|---|---|---|
+| `--pipeline` | `app` | App locator: `module` (symbol `app`) or `module:symbol`. CWD on `sys.path`. Must be `DatapipeApp`. Runs `datapipe.pipeline_init` entry points after load. |
+| `--executor` | `SingleThreadExecutor` | `SingleThreadExecutor` or `RayExecutor` (calls `ray.init()`). |
+| `--debug` | off | DEBUG logging for Datapipe. |
+| `--debug-sql` | off | Log SQLAlchemy engine at INFO. |
+| `--trace-stdout` | off | OpenTelemetry spans to console. |
+| `--trace-jaeger` | off | Export to Jaeger thrift collector. |
+| `--trace-jaeger-host` | `localhost` | Jaeger host. |
+| `--trace-jaeger-port` | `14268` | Jaeger port. |
+| `--trace-gcp` | off | Google Cloud Trace (needs `opentelemetry-exporter-cloud-trace`). |
 
-Format: `<module.import.path>:<symbol>`
+### `--pipeline` examples
 
-Format is similar to other systems, like uvicorn.
+```bash
+datapipe --pipeline app run
+datapipe --pipeline my_project.pipeline:app run
+```
 
-Example: `datapipe --pipeline my_project.pipeline:app` will try to import module
-`my_project.pipeline` and will look for object `app`, it will expect this object
-to be of type `DatapipeApp`.
+---
 
-### `--executor`
+## `datapipe run`
 
-Possible values:
+Run **all** compute steps (`run_full` each) once, or in a loop.
 
-* `SingleThreadExecutor`
-* `RayExecutor`
+| Option | Default | Description |
+|---|---|---|
+| `--loop` | off | Repeat until interrupted. |
+| `--loop-delay` | `30` | Seconds between loops. |
+| `--no-callbacks` | off | Skip `datapipe.run_callbacks` entry points (stdout progress callback still attached). |
 
-TODO add separate section which describes Executor
+Uses the global `--executor`. Always wraps with `StdoutRunCallback` (+ optional entry-point callbacks).
 
-### `--debug`, `--debug-sql`
+---
 
-`--debug` turns on debug logging in most places and shows internals of
-datapipe processing.
+## `datapipe step`
 
-`--debug-sql` additionally turns on logging for all SQL queries which might be
-quite verbose, but provides insight on how datapipe interacts with database.
+Filter steps, then run a subcommand.
 
-### `--trace-*`
+| Option | Description |
+|---|---|
+| `--labels` | `key=value,key2=value2` — step must contain **all** pairs. |
+| `--name` | Comma-separated **prefixes**; step name must start with any. |
 
-* `--trace-stdout`
-* `--trace-jaeger`
-* `--trace-jaeger-host HOST`
-* `--trace-jaeger-port PORT`
-* `--trace-gcp`
+### `step list`
 
-This set of flags turns on different exporters for OpenTelemetry
+Print filtered steps (name, class, labels, inputs, outputs).
 
-## `db`
+| Option | Description |
+|---|---|
+| `--status` | Add `total_idx_count` / `changed_idx_count` when `get_status` is implemented. |
 
-### `create-all`
+### `step run`
 
-`datapipe db create-all` is a handy shortcut for local development. It makes
-datapipe create all known SQL tables in a configured database. When the optional
-``datapipe-core[alembic]`` extra is installed, it also syncs existing tables to
-the current metadata (ADD COLUMN / ALTER) via Alembic's autogenerate API —
-without writing migration files. Tables present in the DB but absent from
-pipeline metadata are not dropped. Without Alembic, only missing tables are
-created (``create_all``); a skip message is printed for the sync step.
+Run filtered steps (same loop / callback options as `datapipe run`).
 
-* `--force-recreate` — drop all known SQL tables first, then create them again.
-  **Destructive:** existing data in those tables is deleted. Use when you want
-  a clean local schema instead of in-place alters.
+| Option | Default | Description |
+|---|---|---|
+| `--loop` | off | Continuous run. |
+| `--loop-delay` | `30` | Sleep between loops. |
+| `--no-callbacks` | off | Skip entry-point run callbacks. |
 
-## `lint`
+### `step run-idx`
 
-Runs checks on current state of database. Can detect and fix commong issues.
+Run one index on filtered **batch transform** steps.
 
-## `run`
+```bash
+datapipe step --name my_step run-idx "id=1,other=x"
+```
 
-## `step`
+Argument `IDX`: comma-separated `col=value` pairs → single-row `IndexDF`.
 
-* `--name` is to provide a filter of steps with prefix matching of step name. Accepts a comma-separated list of prefixes. Example: `datapipe step --name=my_step_name run` or `datapipe step --name=my_step_name,my_other_step_name run`.
-* `--labels` is to provide a filter of steps according to its labels. Example: `datapipe step --labels=my_label_name=my_label_value run`.
+### `step run-changelist`
 
-### `run`
+Drive a start batch step by full process ids, then propagate each chunk’s changelist through the filtered steps.
 
-Run steps. Could be used with `--name` and `--labels` options to filter steps.
+| Option | Default | Description |
+|---|---|---|
+| `--start-step` | first filtered step | Name prefix; must resolve to exactly one `BaseBatchTransformStep`. |
+| `--chunk-size` | step default | Override chunk size for the start step’s id generator. |
+| `--loop` | off | Repeat. |
+| `--loop-delay` | `1` | Sleep between full passes. |
 
-### `list`
+### `step fill-metadata`
 
-Show steps in data pipeline. Could be used with `--name` and `--labels` options to filter steps.
+For batch transform steps: insert all current process indexes into transform meta without running `func`.
 
-* `--status` adds info about indexes to process.
+### `step reset-metadata`
 
-### `reset-metadata`
+Mark all transform-meta rows unprocessed for filtered batch steps.
 
-Mark data as unprocessed. Could be used with `--name` and `--labels` options to filter steps.
+---
 
-## `table`
+## `datapipe table`
+
+### `table list`
+
+Print sorted catalog table names.
+
+### `table migrate-transform-tables`
+
+Run v0.13 transform-table migration for filtered steps (`--name` / `--labels` same semantics as `step`).
+
+---
+
+## `datapipe db`
+
+### `db create-all`
+
+Create known SQL tables; optionally sync schema.
+
+| Option | Description |
+|---|---|
+| `--force-recreate` | Drop all known tables first (**destructive**). |
+
+Behavior:
+
+1. Refuses if the DB is Alembic-managed (`refuse_if_alembic_managed`).
+2. `ensure_db_schema` + `datapipe.db_create_all` entry points.
+3. Optional drop, then `sqla_metadata.create_all`.
+4. If `datapipe-core[alembic]` is installed, `sync_sqla_metadata` (ADD COLUMN / ALTER); otherwise prints a skip message.
+
+---
+
+## `datapipe lint`
+
+Check table consistency (e.g. delete_ts vs update/process, data without meta).
+
+| Option | Default | Description |
+|---|---|---|
+| `--tables` | `*` | Comma-separated catalog names, or `*` for all. |
+| `--fix` | off | Attempt automatic fixes where implemented. |
+
+---
+
+## `datapipe api` (requires `datapipe-app`)
+
+Registered via the `datapipe.cli` entry point when `datapipe-app` is installed. Serves Ops HTTP + UI with uvicorn.
+
+```bash
+datapipe --pipeline app:app api
+datapipe --pipeline app:app api --host 127.0.0.1 --port 8000
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--host` | `0.0.0.0` | Bind address. |
+| `--port` | `8000` | Bind port. |
+
+Wraps the loaded app in `DatapipeAPI` (unless it already is one) and respects the global `--executor`. OpenAPI UI is typically at `/docs` when the server is up. Dashboard at `/`.
+
+See [Install and run Ops](../ops/install-and-run.md) and [DatapipeApp and API](../ops/datapipe-app.md).
+
+---
+
+## Labels (quick)
+
+```bash
+datapipe step --labels=stage=etl,team=ml list
+datapipe step --name=detect,embed run
+```
+
+See [Filter steps by labels](../how-to/filter-by-labels.md).
+
+### See also
+
+- [Extend the CLI](../how-to/extend-cli.md)
+- [DatapipeApp](./pipeline-catalog.md#datapipeapp)
+- [Executors](./executors.md)

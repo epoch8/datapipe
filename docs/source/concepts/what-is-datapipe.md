@@ -1,31 +1,44 @@
 # What is Datapipe?
 
-Datapipe is a Python framework for durable, incremental batch processing. It lets you define a data processing graph once, then run it repeatedly as data changes — processing only what needs to be processed.
+Datapipe is a Python framework for **durable, incremental batch processing**. You define a graph of tables and transform steps once; on every run Datapipe processes **only the keys that need work**.
 
-## The core idea
+## Start here: the incremental idea
 
-A Datapipe pipeline is a directed graph of **Tables** connected by **Steps**. Each step is a Python function that receives one or more `pd.DataFrame`s as input and produces one or more `pd.DataFrame`s as output.
+For each row, Datapipe tracks content (`hash`) and time (`update_ts`). For each step, it tracks when each key was last processed (`process_ts`). A key is dirty when input data is newer than the last successful process — or when the step never succeeded for that key.
 
-What makes this different from a plain script is what Datapipe tracks between runs:
+**Identical rewrites are free:** same hash → no `update_ts` bump → your function does not run.
 
-- For each record in every table, it knows the last time that record was **updated** (`update_ts`).
-- For each step, it knows the last time each record was **processed** (`process_ts`).
-- Before running a step, Datapipe computes the set of records where `update_ts > process_ts` across all inputs. Only those records are passed to your function.
+Visual walkthrough (insert / update / delete / unchanged):
 
-This means your transform functions are always simple and stateless. They do not need to know which records are "new" — Datapipe handles that entirely.
+→ **[Incremental Processing](./incremental-processing.md)**
+
+## Building blocks
+
+| Piece | Role |
+|---|---|
+| **Table + TableStore** | Named dataset + backend (SQL, files, Redis, …) |
+| **Catalog** | Name → table map |
+| **Pipeline steps** | Generate, sync external, batch-transform, or whole-table transform |
+| **DataStore / DatapipeApp** | Runtime + optional Ops API |
+
+Details: [Tables and TableStores](./tables-and-stores.md), [Pipeline Steps](./pipeline-steps.md).
 
 ## Durability
 
-Processing state is written to a SQL metadata store after each successful batch. If a pipeline is interrupted — by a crash, a deployment, or a manual stop — the next run resumes from where it left off. No records are skipped or double-processed.
-
-This makes Datapipe suitable for long-running jobs over large datasets where reliability matters.
+Processing state is written to a SQL metadata store after each successful batch. Crashes and restarts resume from dirty keys — no full replay.
 
 ## Batch orientation
 
-The unit of work in Datapipe is a `pd.DataFrame` batch, not a single row and not a stream event. The `chunk_size` parameter on `BatchTransform` controls how many rows are included per batch. This allows you to tune memory usage and throughput independently.
+Work units are `pd.DataFrame` chunks (`chunk_size` on `BatchTransform`), not single rows and not stream events. Tune memory and throughput independently.
 
 ## What Datapipe is not
 
-- **Not a streaming engine.** There is no concept of low-latency event processing or windowing. Runs are triggered explicitly.
-- **Not a distributed compute engine.** By default, steps run single-threaded. A `RayExecutor` is available for parallelism across steps.
-- **Not opinionated about storage.** Tables can live in a SQL database, on the filesystem, in Redis, Elasticsearch, Qdrant, Milvus, or a custom backend — as long as you provide a `TableStore` implementation.
+- **Not a streaming engine** — no sub-second event windows; runs are triggered explicitly.
+- **Not a distributed compute engine by default** — single-threaded executor out of the box; optional `RayExecutor`.
+- **Not opinionated about storage** — bring any `TableStore` implementation.
+
+## Next
+
+1. [Installation](../getting-started/installation.md)
+2. [Your First Pipeline](../getting-started/first-pipeline.md)
+3. [Incremental Processing](./incremental-processing.md) — the four GIFs

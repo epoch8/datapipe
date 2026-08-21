@@ -1,40 +1,73 @@
-# Using with SQLite
+# How to Use SQLite as Metadata Store
 
-> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+Run Datapipe locally against a SQLite file instead of PostgreSQL.
 
-Python comes with some ([at least
-3.7.15](https://docs.python.org/3/library/sqlite3.html)) version of SQLite
-included.
+## Goal
 
-Unfortunately for `datapipe` we need at least 3.39.0 version due to usage of
-`FULL OUTER JOIN` in some queries. That's why we can't rely on Python embedded
-sqlite module.
+Configure `DBConn` with a SQLite URL that supports the SQL Datapipe needs (including `FULL OUTER JOIN`).
 
-## Installation
+## Why not the stdlib sqlite3?
 
-We configured `sqlite` extra in `datapipe-core` package, which installs
-`pysqlite3-binary` and `sqlalchemy-pysqlite3`. With versions selected we can
-guarantee that installed sqlite3 version is sufficient.
+Python’s bundled SQLite is often older than **3.39.0**. Datapipe’s meta queries need a newer engine, so do not use the default `sqlite://` driver with the system library for production of meta state.
 
-So specifying `datapipe-core` dependency with `sqlite` extra will provide
-correct dependencies.
+## Steps
+
+### 1. Install the `sqlite` extra
+
+```bash
+pip install "datapipe-core[sqlite]"
+```
+
+Or in `pyproject.toml`:
 
 ```toml
-# pyproject.toml
-datapipe-core = {version="^0.11.11", extras=["sqlite"]}
+dependencies = [
+    "datapipe-core[sqlite]",
+]
 ```
 
-## Gotchas
+That pulls in `pysqlite3-binary` and `sqlalchemy-pysqlite3` with a recent SQLite build. Prefer this over the plain `pysqlite3` package, which can ship an outdated SQLite.
 
-Alongside with `pysqlite3-binary` there's a package `pysqlite3`. In our
-experience `pysqlite3` package sometimes comes with old version of sqlite3,
-please be aware.
-
-## Usage
-
-In order to use sqlite3 as a storage for metadata you should specify dbconn with
-`"sqlite+pysqlite3://"` driver:
+### 2. Open `DBConn` with the `sqlite+pysqlite3` driver
 
 ```python
+from datapipe.store.database import DBConn
+from datapipe.datatable import DataStore
+
 dbconn = DBConn("sqlite+pysqlite3:///db.sqlite")
+ds = DataStore(dbconn)
 ```
+
+Use three slashes for a relative path (`sqlite+pysqlite3:///db.sqlite`) or four for absolute (`sqlite+pysqlite3:////tmp/db.sqlite`).
+
+Helper used by the core examples:
+
+```python
+# examples/datapipe_core/_sqlite.py
+def sqlite_connstr(path: str = "db.sqlite") -> str:
+    return f"sqlite+pysqlite3:///{path}"
+```
+
+### 3. Create schema and run
+
+```bash
+datapipe db create-all
+datapipe run
+```
+
+For throwaway local experiments this is enough. For durable schema history, prefer [Alembic migrations](./alembic-migrations.md) instead of relying on `create-all` alone.
+
+## Expected result
+
+- Meta and (when using SQL stores) data tables live in the SQLite file you named.
+- Incremental joins that need modern SQLite features work without upgrading the OS package.
+
+## Tip
+
+Keep the SQLite file next to the pipeline for demos; point `DBConn` at PostgreSQL in shared or production environments. The rest of the pipeline code stays the same.
+
+## See also
+
+- [Installation](../getting-started/installation.md)
+- [Your First Pipeline](../getting-started/first-pipeline.md)
+- [Manage Schema Changes with Alembic](./alembic-migrations.md)

@@ -1,51 +1,129 @@
-# Developing TableStore
+# How to Write a Custom TableStore
 
-> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+Add a storage backend Datapipe does not ship — any system you can read and write as keyed DataFrames.
 
-## When you need it?
+## Goal
 
-If you need Datapipe to read or write data to a specific database which is not
-supported out of the box, you will have to write custom TableStore
-implementation.
+Implement `TableStore`, declare capabilities, and reuse the shared store test suite.
 
-## TableStore functionality overview
+## When you need this
 
-TBD
+Use a custom store when data must live in a database or service that is not covered by the built-in backends (SQL, filedir, Redis, Elasticsearch, Qdrant, Milvus, …).
 
-## Testing
+## Steps
 
-For testing standard TableStore implementation functionality there's a base set
-of tests, implemented in `datapipe.store.tests.abstract.AbstractBaseStoreTests`.
+### 1. Subclass `TableStore`
 
-This is a `pytest` compatible test class. In order to use this set of tests you
-need to: 
+Implement the abstract surface your backend supports. Required methods (from `datapipe.store.table_store.TableStore`):
 
-1. Create `TestYourStore` class in tests of your module which inherits from
-`AbstractBaseStoreTests`
-1. Implement `store_maker` fixture which returns a function that creates your
-   table store given a specific schema
+- `get_primary_schema` / `get_meta_schema` / `get_schema`
+- `insert_rows` / `delete_rows` / `read_rows`
+- Optional: override `update_rows` (default is delete-then-insert) and `read_rows_meta_pseudo_df`
 
-Example:
+Tiny in-memory sketch:
 
+```python
+import pandas as pd
+from sqlalchemy import Column, Integer, String
+
+from datapipe.store.table_store import TableStore, TableStoreCaps
+from datapipe.types import DataDF, DataSchema, IndexDF, MetaSchema, data_to_index
+
+
+class InMemoryStore(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=True,
+        supports_read_all_rows=True,
+        supports_read_nonexistent_rows=True,
+        supports_read_meta_pseudo_df=True,
+    )
+
+    def __init__(self, data_schema: DataSchema | None = None) -> None:
+        self._schema: DataSchema = data_schema or [
+            Column("id", String(), primary_key=True),
+            Column("value", Integer()),
+        ]
+        self._df = pd.DataFrame(columns=[c.name for c in self._schema])
+
+    def get_primary_schema(self) -> DataSchema:
+        return [c for c in self._schema if c.primary_key]
+
+    def get_meta_schema(self) -> MetaSchema:
+        return []
+
+    def get_schema(self) -> DataSchema:
+        return list(self._schema)
+
+    def read_rows(self, idx: IndexDF | None = None) -> DataDF:
+        if idx is None:
+            return self._df.copy()
+        if len(idx) == 0:
+            return pd.DataFrame(columns=[c.name for c in self._schema])
+        keys = self.primary_keys
+        left = self._df.set_index(keys)
+        right = idx.set_index(keys)
+        return left.loc[left.index.intersection(right.index)].reset_index()
+
+    def insert_rows(self, df: DataDF) -> None:
+        if df.empty:
+            return
+        self.delete_rows(data_to_index(df, self.primary_keys))
+        self._df = pd.concat([self._df, df], ignore_index=True)
+
+    def delete_rows(self, idx: IndexDF) -> None:
+        if idx.empty or self._df.empty:
+            return
+        keys = self.primary_keys
+        left = self._df.set_index(keys)
+        right = idx.set_index(keys)
+        self._df = left.loc[left.index.difference(right.index)].reset_index()
 ```
-import pytest
 
-from datapipe.store.redis import RedisStore
+Set each `TableStoreCaps` flag honestly: the abstract tests skip cases your store cannot support (for example `supports_read_all_rows=False`).
+
+### 2. Support external sync if needed
+
+If the table is filled outside Datapipe and you use `UpdateExternalTable`, implement `read_rows_meta_pseudo_df` so Datapipe can discover keys and content for hashing. The base class yields `read_rows()` once; override for true chunking on large stores.
+
+### 3. Wire it into a `Table`
+
+```python
+from datapipe.compute import Table
+
+my_table = Table(name="events", store=InMemoryStore(...))
+```
+
+Use that table as a catalog entry or as a step input/output like any built-in store.
+
+### 4. Run the abstract test suite
+
+```python
+import pytest
+from sqlalchemy import Column, String
+
 from datapipe.store.tests.abstract import AbstractBaseStoreTests
 from datapipe.types import DataSchema
 
-
-class TestRedisStore(AbstractBaseStoreTests):
+class TestInMemoryStore(AbstractBaseStoreTests):
     @pytest.fixture
     def store_maker(self):
-        def make_redis_store(data_schema: DataSchema):
-            return RedisStore(
-                connection="redis://localhost",
-                name="test",
-                data_sql_schema=data_schema,
-            )
+        def make_store(data_schema: DataSchema):
+            return InMemoryStore(data_schema=data_schema)
 
-        return make_redis_store
+        return make_store
 ```
 
-This will instantiate a suite of common tests for your store.
+Subclassing `AbstractBaseStoreTests` and providing `store_maker` runs the shared pytest cases (round-trip read/write, deletes, cloudpickle, optional full-table reads, and so on).
+
+## Expected result
+
+- Pipeline steps can read and write your backend through the normal DataFrame APIs.
+- Caps and tests document what the store guarantees.
+- Incremental meta tracking works as long as primary keys and hashes are stable.
+
+## See also
+
+- [Tables and TableStores](../concepts/tables-and-stores.md)
+- [TableStore backends reference](../reference/stores/index.md)
+- Built-in example of the test pattern: `TestTableStoreFiledir` in `libs/datapipe-core/tests/test_table_store_filedir.py`

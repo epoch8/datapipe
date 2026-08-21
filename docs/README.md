@@ -21,20 +21,52 @@ The key discipline of Diátaxis: each page belongs to **exactly one quadrant**. 
 docs/
 ├── README.md                  ← you are here
 ├── book.toml                  ← mdBook configuration
-├── Makefile                   ← build helpers
+├── Makefile                   ← build / inventory / gifs
+├── inventory-map.yaml         ← symbol → page map
+├── inventory-core.yaml        ← generated coverage snapshot
+├── scripts/
+│   ├── inventory_core.py
+│   └── render_incremental_gifs.py
 └── source/
-    ├── SUMMARY.md             ← mdBook table of contents (single source of truth for nav)
-    ├── getting-started/       ← tutorial quadrant
-    ├── concepts/              ← explanation of the "why"
-    ├── how-to/                ← task-oriented guides
+    ├── SUMMARY.md             ← TOC
+    ├── troubleshooting.md
+    ├── getting-started/
+    ├── concepts/              ← includes Incremental Processing + GIFs
+    ├── how-to/
     ├── reference/
-    │   ├── steps/             ← per-step API reference
-    │   └── stores/            ← per-backend API reference
-    ├── explanation/           ← internals and deep dives
-    └── migration/             ← version migration guides
+    ├── ops/                   ← App / UI / observability
+    ├── integrations/          ← ML / Label Studio / CVAT
+    ├── explanation/
+    ├── migration/
+    └── assets/incremental/    ← regenerable GIFs
 ```
 
 ## Tooling
+
+### Core API inventory (coverage gate)
+
+`docs/scripts/inventory_core.py` walks `libs/datapipe-core` (AST, no optional imports),
+lists public pipe surfaces (`PipelineStep` / `TableStore` / `Executor` subclasses, catalog types, CLI),
+and checks each symbol against `docs/inventory-map.yaml` → an existing page under `docs/source/`.
+
+```bash
+cd docs
+make inventory          # print report + write inventory-core.yaml
+make inventory-strict   # same, exit 1 if any symbol has no page
+```
+
+Edit `inventory-map.yaml` when you add a new public step/store/CLI command. Generated
+`inventory-core.yaml` is a snapshot for PR review; regenerate before committing docs changes.
+
+### Incremental GIFs
+
+Four explainers for insert / update / delete / unchanged:
+
+```bash
+cd docs && make gifs
+```
+
+Writes `source/assets/incremental/*.gif`. Commit the GIFs so mdBook/RTD need no renderer. Embedded from [Incremental Processing](./source/concepts/incremental-processing.md).
 
 ### mdBook (primary)
 

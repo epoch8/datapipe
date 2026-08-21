@@ -112,12 +112,13 @@ This shows all steps in your pipeline and how many records are pending for each.
 
 ## What just happened
 
-- `BatchGenerate` is a special step that populates a table from an external source (here, a Python generator). It runs in full each time and datapipe detects which rows changed.
-- `BatchTransform` receives a `pd.DataFrame` of the rows that need processing and returns a `pd.DataFrame` of results. Datapipe tracks the `update_ts` / `process_ts` pair for every record to determine what to pass in.
-- The metadata (which rows were processed, when, with what result) is stored in the SQLite file alongside your data tables.
+- `BatchGenerate` seeds the `words` table. On the second run the same content keeps the same hash — no dirty keys.
+- `BatchTransform` only receives keys where input `update_ts` is newer than the step `process_ts` (see [Incremental Processing](../concepts/incremental-processing.md)).
+- Try changing one word in `generate_words` and re-running: only that `word_id` recomputes in `word_lengths`.
 
 ## Next steps
 
-- Read [Concepts](../concepts/what-is-datapipe.md) to understand how incremental tracking works.
-- See [How to pull data from external sources](../how-to/external-sources.md) for more `BatchGenerate` patterns.
-- See [How to run model inference](../how-to/model-inference.md) for multi-input transforms.
+- **[Incremental Processing](../concepts/incremental-processing.md)** — insert / update / delete / unchanged GIFs
+- [What is Datapipe?](../concepts/what-is-datapipe.md)
+- [Pull data from external sources](../how-to/external-sources.md)
+- [Run model inference](../how-to/model-inference.md) — multi-input transforms

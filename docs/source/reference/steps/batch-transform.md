@@ -1,85 +1,128 @@
-# BatchTransform
+# BatchTransform / DatatableBatchTransform
 
-> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+Incremental DataFrame transforms driven by transform-meta change detection.
+
+Module: `datapipe.step.batch_transform`
+
+---
+
+## `BatchTransform`
+
+When to use: Per-batch DataFrame → DataFrame work with automatic change tracking.
 
 ```python
-BatchTransoform(
-    func: BatchTransformFunc,
-    inputs: List[PipelineInput],
-    outputs: List[TableOrName],
-    chunk_size: int = 1000,
-    kwargs: Optional[Dict[str, Any]] = None,
-    transform_keys: Optional[List[str]] = None,
-    labels: Optional[Labels] = None,
-    executor_config: Optional[ExecutorConfig] = None,
-    filters: Optional[LabelDict | Callable[[], LabelDict]] = None,
-    order_by: Optional[List[str]] = None,
-    order: Literal["asc", "desc"] = "asc",
-)
+@dataclass
+class BatchTransform(PipelineStep):
+    func: BatchTransformFunc
+    inputs: list[PipelineInput]
+    outputs: list[PipelineOutput]
+    chunk_size: int = 1000
+    name: str | None = None
+    kwargs: dict[str, Any] | None = None
+    transform_keys: list[str] | None = None
+    labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
+    filters: LabelDict | Callable[[], LabelDict] | None = None
+    order_by: list[str] | None = None
+    order: Literal["asc", "desc"] = "asc"
 ```
 
-## Arguments
+Builds a `BatchTransformStep` (`BaseBatchTransformStep`).
 
-### `func`
+### Arguments
 
-Function which is a body of transform, it receives the same number of
-`pd.DataFrame`-s in the same order as specified in `inputs`
+| Arg | Description |
+|---|---|
+| `func` | Callable. Positional args are input DataFrames (same order as `inputs`). May return one `DataDF` or a list/tuple matching `outputs`. |
+| `inputs` | Input tables: `str` / ORM / `Table` / `InputSpec` / `Required`. |
+| `outputs` | Output tables: `str` / ORM / `Table` / `OutputSpec`. |
+| `chunk_size` | Indexes per batch (default `1000`). |
+| `name` | Compute step name; default is a munged name from func + I/O. |
+| `kwargs` | Extra keyword args merged into the call. |
+| `transform_keys` | Explicit transform grain; otherwise inferred from input/output primary keys. |
+| `labels` | CLI / filter labels `[(k, v), ...]`. |
+| `executor_config` | Resources / parallelism for `RayExecutor`. |
+| `filters` | Restrict indexes (`LabelDict` or callable returning one). Merged into `RunConfig.filters`. |
+| `order_by` | Optional columns for processing order. |
+| `order` | `"asc"` or `"desc"`. |
 
-It should return a single `pd.DataFrame` if the `output` has one element or a
-tuple of `pd.DataFrame` of the same length as `output` which will be interpreted
-as corresponding to elements in `output`.
+### Injected kwargs
 
-### `inputs`
+If `func` declares these parameters, Datapipe injects them:
 
-A list of input tables for a given transformation. Each element might be either:
+| Parameter | Value |
+|---|---|
+| `ds` | Active `DataStore` |
+| `idx` | Current batch `IndexDF` |
+| `run_config` | Current `RunConfig` |
 
-* a string, this string will be interpreted as a name of `Table` from `Catalog`
-* an SQLAlchemy ORM table, this table will be added implicitly to `Catalog` and
-  used as an input
-* a qualifier `Required` with parameter either a string or an SQLAlchemy table,
-  in this case same rules apply to the inner part and qualifier `Required` tells
-  Datapipe that rows from this table must be present at calculation of
-  transformations to compute
+If `idx` is **not** in the signature and all input DataFrames are empty, the batch returns `None` (delete path for outputs). Declaring `idx` forces the call even when inputs are empty.
 
-Example:
+### Notes
+
+- Creates transform meta via `ds.meta_plane.create_transform_meta`.
+- `run_full` / `run_changelist` use an `Executor` (`SingleThreadExecutor` if omitted).
+- On exception: logs and marks error unless `run_config.fail_fast`.
+- Output storage uses `store_chunk` with mapped `processed_idx`; `None` result deletes existing rows for the batch index.
+
+### Example
 
 ```python
-# ...
+def count_chars(words: pd.DataFrame) -> pd.DataFrame:
+    return words.assign(n=words["text"].str.len())
+
 BatchTransform(
-    func=apply_detection_model,
-    inputs=[
-        # This is a table from Catalog.
-        # keys: <image_id>
-        "images",
-
-        # This is an SQLAlchemy table defined with declarative ORM.
-        # keys: <model_id>
-        DectionModel,
-
-        # This is a table from Catalog, which contains the identifier of current 
-        # model, entries from DetectionModel will be filtered joining on `model_id`.
-        # keys: <model_id>
-        Required("current_model"),
-    ],
-    # ...
+    func=count_chars,
+    inputs=["words"],
+    outputs=["word_lengths"],
+    chunk_size=500,
 )
-# ...
 ```
 
-### `outputs`
+### See also
 
-### `chunk_size`
+- [Required / InputSpec / OutputSpec](../types.md)
+- [Executors](../executors.md)
+- [Incremental processing](../../concepts/incremental-processing.md)
 
-### `kwargs`
+---
 
-### `transform_keys`
+## `DatatableBatchTransform`
 
-### `labels`
+When to use: Same incremental machinery, but `func` receives `DataTable` list + `idx` instead of preloaded DataFrames.
 
-### `executor_config`
+```python
+@dataclass
+class DatatableBatchTransform(PipelineStep):
+    func: DatatableBatchTransformFunc
+    inputs: list[PipelineInput]
+    outputs: list[PipelineOutput]
+    name: str | None = None
+    chunk_size: int = 1000
+    transform_keys: list[str] | None = None
+    kwargs: dict | None = None
+    labels: Labels | None = None
+    executor_config: ExecutorConfig | None = None
+```
 
-### `filters`
+### `func` signature
 
-### `order_by`
+```python
+def func(
+    ds: DataStore,
+    idx: IndexDF,
+    input_dts: list[DataTable],
+    run_config: RunConfig | None = None,
+    kwargs: dict[str, Any] | None = None,
+) -> TransformResult: ...
+```
 
-### `order`
+### Notes
+
+- Does **not** expose `filters` / `order_by` / `order` on the dataclass (unlike `BatchTransform`).
+- You load/store data yourself via `input_dts` / return values still go through `store_batch_result` like `BatchTransform`.
+- Prefer `BatchTransform` unless you need custom reads or non-DataFrame IO around the same change tracking.
+
+### See also
+
+- [DatatableTransform](./datatable-transform.md) — non-incremental, whole-table

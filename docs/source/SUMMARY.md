@@ -5,13 +5,15 @@
 - [Introduction](./getting-started/introduction.md)
 - [Installation](./getting-started/installation.md)
 - [Your First Pipeline](./getting-started/first-pipeline.md)
+- [Troubleshooting](./troubleshooting.md)
 
 # Concepts
 
+- [Concepts overview](./concepts/index.md)
 - [What is Datapipe?](./concepts/what-is-datapipe.md)
+- [Incremental Processing](./concepts/incremental-processing.md)
 - [Tables and TableStores](./concepts/tables-and-stores.md)
 - [Pipeline Steps](./concepts/pipeline-steps.md)
-- [Incremental Processing](./concepts/incremental-processing.md)
 - [Primary Keys and Transform Keys](./concepts/primary-keys.md)
 
 # How-to Guides
@@ -23,7 +25,9 @@
 - [Map Mismatched Primary Keys](./how-to/key-mapping.md)
 - [Filter Steps by Labels](./how-to/filter-by-labels.md)
 - [Use SQLite as Metadata Store](./how-to/using-sqlite.md)
+- [Use PostgreSQL in Production](./how-to/production-postgres.md)
 - [Manage Schema Changes with Alembic](./how-to/alembic-migrations.md)
+- [Run Steps with RayExecutor](./how-to/ray-executor.md)
 - [Extend the CLI](./how-to/extend-cli.md)
 - [Write a Custom TableStore](./how-to/custom-table-store.md)
 
@@ -47,8 +51,26 @@
 - [Types](./reference/types.md)
 - [Executors](./reference/executors.md)
 
+# Ops (App / UI)
+
+- [Overview](./ops/index.md)
+- [Install and run Ops](./ops/install-and-run.md)
+- [DatapipeApp and API](./ops/datapipe-app.md)
+- [Ops UI walkthrough](./ops/ui-walkthrough.md)
+- [Observability and run logs](./ops/observability.md)
+
+# Integrations
+
+- [Overview](./integrations/index.md)
+- [ML mental model](./integrations/ml-overview.md)
+- [datapipe-ml index](./integrations/datapipe-ml.md)
+- [Label Studio](./integrations/label-studio.md)
+- [CVAT](./integrations/cvat.md)
+- [FiftyOne and OCR](./integrations/appendices.md)
+
 # Explanation
 
+- [Architecture overview](./explanation/architecture.md)
 - [Compute Step Lifecycle](./explanation/compute-step-lifecycle.md)
 - [Change Detection and Merging](./explanation/change-detection.md)
 - [Meta-Table Schema](./explanation/meta-table-schema.md)

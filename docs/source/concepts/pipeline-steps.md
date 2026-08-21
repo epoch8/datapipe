@@ -1,61 +1,63 @@
 # Pipeline Steps
 
-> **Needs review.** This page was carried over from the previous documentation and has not been updated yet.
+A pipeline is an ordered list of **PipelineStep** objects. At build time each step expands into one or more **ComputeStep** nodes (the runtime graph).
 
-## Patterns of data flow
+```python
+pipeline = Pipeline([
+    BatchGenerate(generate_words, outputs=["words"]),
+    BatchTransform(count_chars, inputs=["words"], outputs=["word_lengths"]),
+])
+```
 
-### Generating data from an external source
+## Which step type?
 
-Examples:
-- Parsing a product feed (e.g. YML) and populating a table
-- Calling an external API to retrieve a list of items
+| Step | Incremental? | Use when |
+|---|---|---|
+| [`BatchGenerate`](../reference/steps/batch-generate.md) | Seeds outputs | Source tables / generators (`yield` DataFrames) |
+| [`UpdateExternalTable`](../reference/steps/update-external-table.md) | Syncs meta | Data written outside Datapipe |
+| [`BatchTransform`](../reference/steps/batch-transform.md) | **Yes** (row-level) | Stateless DataFrame→DataFrame work |
+| [`DatatableTransform`](../reference/steps/datatable-transform.md) | No (whole tables) | Global jobs (e.g. full training) needing `DataTable` handles |
 
-Generation runs in batches; the total volume is not known in advance.
+## Data-flow patterns
 
-### Batch transformation 1-to-1 (no dependency on all data)
+### Generate from outside
 
-Examples:
-- Resizing images
-- Running ML model inference
+Pull a feed, list S3 keys, call an API — emit batches with `BatchGenerate`, or refresh meta with `UpdateExternalTable` if another process owns the files/rows.
 
-### Batch transformation 1-to-N or N-to-1 on small batches
+### 1-to-1 batch transform
 
-Examples:
-- Expanding product attributes into individual records: `(product_id)` &rarr; `(product_id, attribute_id)`
-- Aggregating classified bounding boxes into one record per image: `(image_id, bbox_id)` &rarr; `(image_id)`
+Resize images, normalize text, run per-row enrichment. Classic `BatchTransform`. Example: `examples/datapipe_core/image_resize/`.
 
-### Global (or near-global) transformation
+### 1-to-N or N-to-1 on chunks
 
-> Data may be read multiple times. The total volume may be too large to fit in memory at once.
+Expand attributes or collapse boxes. Still `BatchTransform`; watch `transform_keys` and output `processed_idx` semantics. Example: `examples/datapipe_core/one_to_many_pipeline/`.
 
-Example: training an ML model on a full table.
+### Multi-input
 
----
+Model weights × images → predictions. Set `transform_keys` to the product grain. Example: `examples/datapipe_core/model_inference/`.
 
-## ComputeStep types
+### Global / near-global
 
-### `DatatableTransform`
+Training that must see “all” data — prefer `DatatableTransform` (no per-row changelist). Accept that Datapipe will not skip unchanged rows for you.
 
-Accepts a list of input and output `DataTable`s and applies an external function to them.
+## Labels and filters
 
-This type gives Datapipe no visibility into which individual records changed, so it cannot perform incremental (`Changelist`) processing. Use it for generation steps and global transforms such as model training.
+Steps can carry `labels` for CLI selection (`datapipe step run --labels …`) and `filters` to restrict which rows participate. See [Filter Steps by Labels](../how-to/filter-by-labels.md).
 
-### `BatchTransform`
+## Magic kwargs on `BatchTransform` / `BatchGenerate`
 
-Accepts a function `func` together with input and output tables. Datapipe uses record-level metadata to determine which rows need reprocessing and passes only those rows to `func` in chunks.
+If your function declares these parameters, Datapipe injects them:
 
-Suitable for incremental (`Changelist`) processing.
+| Parameter | Injected value |
+|---|---|
+| `ds` | Active `DataStore` |
+| `idx` | `IndexDF` for the current batch |
+| `run_config` | Current `RunConfig` |
 
-Covers 1-to-1 batch transforms and small-batch 1-to-N / N-to-1 patterns.
+Declaring `idx` also changes delete behaviour: empty inputs still call `func` instead of the automatic `None` → cleanup path.
 
-**Magic injection** — Datapipe inspects the signature of `func` and automatically supplies:
-- `ds` → the active `DataStore`
-- `run_config` → the current `RunConfig`
-- `idx` → an `IndexDF` containing the primary keys of the current batch
+## See also
 
-### `BatchGenerate`
-
-Accepts a generator function `func` and output tables `outputs`. Use this step when you need to define primary (source) tables or periodically synchronise data from an external source (another database table, files on disk, etc.).
-
-**Magic injection:**
-- `ds` → the active `DataStore`
+- [Incremental Processing](./incremental-processing.md) — when BatchTransform re-runs
+- [Compute Step Lifecycle](../explanation/compute-step-lifecycle.md)
+- [Steps reference](../reference/steps/index.md)
