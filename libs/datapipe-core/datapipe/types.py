@@ -4,7 +4,6 @@ import itertools
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
-    Any,
     NewType,
     TypeAlias,
     TypeVar,
@@ -27,6 +26,9 @@ MetaSchema = list[Column]
 # Dataframe with columns (<index_cols ...>)
 IndexDF = NewType("IndexDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
+# Dataframe with columns (<index_cols ...>, rank)
+ChainIndexDF = NewType("ChainIndexDF", pd.DataFrame)  # type: ignore[valid-newtype]
+
 # Dataframe with columns (<index_cols ...>, hash)
 HashDF = NewType("HashDF", pd.DataFrame)  # type: ignore[valid-newtype]
 
@@ -46,6 +48,8 @@ TransformResult = DataDF | list[DataDF] | tuple[DataDF, ...]
 OrmTable = type[DeclarativeBase]
 
 TableOrName = Union[str, OrmTable, "Table"]
+
+ProcessItem = IndexDF | tuple[IndexDF, IndexDF]
 
 
 @dataclass
