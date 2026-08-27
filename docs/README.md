@@ -58,6 +58,8 @@ make inventory-strict   # same, exit 1 if any symbol has no page
 Edit `inventory-map.yaml` when you add a new public step/store/CLI command. Generated
 `inventory-core.yaml` is a snapshot for PR review; regenerate before committing docs changes.
 
+Authoring templates for reference pages: [writer-guide.md](./writer-guide.md).
+
 ### Incremental GIFs
 
 Four explainers for insert / update / delete / unchanged:

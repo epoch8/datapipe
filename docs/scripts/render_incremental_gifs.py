@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Render four incremental-processing explainers as animated GIFs.
+"""Render incremental-processing explainers as animated GIFs.
 
-Output: docs/source/assets/incremental/{01-insert,02-update,03-delete,04-unchanged}.gif
+Output: docs/source/assets/incremental/{01-insert,02-update,03-delete,04-unchanged,
+        05-processed-idx,06-resurrection}.gif
 
 Uses Pillow only (no imageio). Regenerate with: make -C docs gifs
 """
@@ -405,12 +406,241 @@ def gif_unchanged() -> None:
     save_gif(frames, OUT_DIR / "04-unchanged.gif")
 
 
+def scene_layout_child_b(
+    title: str,
+    subtitle: str,
+    a_rows: list[tuple[str, str]],
+    meta_rows: list[tuple[str, str]],
+    step_rows: list[tuple[str, str]],
+    b_rows: list[tuple[str, str]],
+    *,
+    a_badge=None,
+    a_badge_color=ACCENT,
+    a_hl=None,
+    meta_badge=None,
+    meta_badge_color=ACCENT,
+    meta_hl=None,
+    step_badge=None,
+    step_badge_color=ACCENT,
+    step_hl=None,
+    b_badge=None,
+    b_badge_color=OK,
+    b_hl=None,
+    b_deleted_rows: set[int] | None = None,
+    arrow_label: str = "",
+    arrow_color=ACCENT,
+    show_arrow: bool = True,
+    footer: str = "",
+) -> Image.Image:
+    """Like scene_layout but allows per-row strikethrough on child table B."""
+    img, draw = base_frame(title, subtitle)
+    card_w, card_h = 190, 180
+    y0 = 100
+    gap = 18
+    xs = [28]
+    for _ in range(3):
+        xs.append(xs[-1] + card_w + gap)
+
+    draw_table_card(draw, xs[0], y0, card_w, card_h, "Table A (parent)", a_rows, a_hl, a_badge, a_badge_color)
+    draw_table_card(draw, xs[1], y0, card_w, card_h, "A_meta", meta_rows, meta_hl, meta_badge, meta_badge_color)
+    draw_table_card(draw, xs[2], y0, card_w, card_h, "step_meta", step_rows, step_hl, step_badge, step_badge_color)
+
+    # Custom B card with optional deleted row styling
+    bx, by = xs[3], y0
+    outline = b_badge_color if b_hl == "active" else (DANGER if b_hl == "deleted" else BORDER)
+    rounded_rect(draw, (bx, by, bx + card_w, by + card_h), CARD, outline=outline, width=3 if b_hl else 2)
+    draw.text((bx + 14, by + 10), "Table B (1-to-N)", font=F_LABEL, fill=INK)
+    if b_badge:
+        bw = 8 + len(b_badge) * 7
+        bbx = bx + card_w - bw - 12
+        bby = by + 8
+        rounded_rect(draw, (bbx, bby, bbx + bw, bby + 22), b_badge_color, outline=b_badge_color, radius=8)
+        draw.text((bbx + 6, bby + 3), b_badge, font=F_SMALL, fill=(255, 255, 255))
+    yy = by + 40
+    draw.line((bx + 12, yy - 6, bx + card_w - 12, yy - 6), fill=BORDER, width=1)
+    b_deleted_rows = b_deleted_rows or set()
+    for i, (left, right) in enumerate(b_rows):
+        row_color = DANGER if i in b_deleted_rows else INK
+        left_color = DANGER if i in b_deleted_rows else MUTED
+        draw.text((bx + 14, yy), left, font=F_BODY, fill=left_color)
+        draw.text((bx + card_w // 2, yy), right, font=F_BODY, fill=row_color)
+        if i in b_deleted_rows:
+            draw.line((bx + 14, yy + 10, bx + card_w - 14, yy + 10), fill=DANGER, width=2)
+        yy += 22
+
+    if show_arrow:
+        draw_arrow(draw, xs[0] + card_w // 2, y0 + card_h + 30, xs[3] + card_w // 2, y0 + card_h + 30, arrow_color, arrow_label)
+        draw.ellipse((xs[1] + card_w // 2 - 4, y0 + card_h + 26, xs[1] + card_w // 2 + 4, y0 + card_h + 34), fill=arrow_color)
+        draw.ellipse((xs[2] + card_w // 2 - 4, y0 + card_h + 26, xs[2] + card_w // 2 + 4, y0 + card_h + 34), fill=arrow_color)
+
+    if footer:
+        rounded_rect(draw, (28, H - 70, W - 28, H - 24), (241, 245, 249), outline=BORDER, radius=10)
+        draw.text((44, H - 56), footer, font=F_BODY, fill=INK)
+    return img
+
+
+def gif_processed_idx() -> None:
+    parent = [("offer_id", "42"), ("attrs", "{a,b,c}")]
+    meta_ok = [("offer_id", "42"), ("hash", "H9"), ("update_ts", "t1"), ("delete_ts", "NULL")]
+    step_ok = [("offer_id", "42"), ("process_ts", "t2"), ("is_success", "true")]
+    b_full = [("(42, a)", "10"), ("(42, b)", "20"), ("(42, c)", "30")]
+    b_partial = [("(42, a)", "10"), ("(42, b)", "20")]
+
+    frames = [
+        scene_layout_child_b(
+            "5 · processed_idx",
+            "1-to-N: three child rows exist for parent key 42",
+            parent,
+            meta_ok,
+            step_ok,
+            b_full,
+            show_arrow=False,
+            footer="Parent key 42 already processed — B has attrs a, b, c",
+        ),
+        scene_layout_child_b(
+            "5 · processed_idx",
+            "Parent changes → transform re-runs for offer_id=42",
+            [("offer_id", "42"), ("attrs", "{a,b}")],
+            [("offer_id", "42"), ("hash", "H10"), ("update_ts", "t3 ↑"), ("delete_ts", "NULL")],
+            [("offer_id", "42"), ("process_ts", "t2"), ("is_success", "true")],
+            b_full,
+            a_badge="CHG",
+            a_badge_color=WARN,
+            a_hl="active",
+            meta_badge="dirty",
+            meta_badge_color=WARN,
+            meta_hl="active",
+            show_arrow=False,
+            footer="func returns only two rows — (42, c) not in DataFrame",
+        ),
+        scene_layout_child_b(
+            "5 · processed_idx",
+            "store_chunk(..., processed_idx=batch idx for key 42)",
+            [("offer_id", "42"), ("attrs", "{a,b}")],
+            [("offer_id", "42"), ("hash", "H10"), ("update_ts", "t3"), ("delete_ts", "NULL")],
+            [("offer_id", "42"), ("process_ts", "t2"), ("is_success", "true")],
+            b_partial,
+            step_badge="RUN",
+            step_badge_color=ACCENT,
+            step_hl="active",
+            arrow_label="partial output",
+            footer="processed_idx = {42} → missing child PKs under that parent are deleted",
+        ),
+        scene_layout_child_b(
+            "5 · processed_idx",
+            "Row (42, c) removed — silent if you omitted it by mistake",
+            [("offer_id", "42"), ("attrs", "{a,b}")],
+            [("offer_id", "42"), ("hash", "H10"), ("update_ts", "t3"), ("delete_ts", "NULL")],
+            [("offer_id", "42"), ("process_ts", "t4"), ("is_success", "true")],
+            [("(42, a)", "10"), ("(42, b)", "20"), ("(42, c)", "DEL")],
+            b_badge="TRIM",
+            b_badge_color=DANGER,
+            b_hl="active",
+            b_deleted_rows={2},
+            step_badge="OK",
+            step_badge_color=OK,
+            arrow_label="cleanup done",
+            arrow_color=DANGER,
+            footer="Always return the full intended child set for each transform key",
+        ),
+    ]
+    save_gif(frames, OUT_DIR / "05-processed-idx.gif")
+
+
+def gif_resurrection() -> None:
+    live_a = [("id", "1"), ("value", "hello")]
+    live_meta = [("id", "1"), ("hash", "H1"), ("update_ts", "t1"), ("delete_ts", "NULL")]
+    step_ok = [("id", "1"), ("process_ts", "t2"), ("is_success", "true")]
+    live_b = [("id", "1"), ("value", "HELLO")]
+
+    frames = [
+        scene_layout(
+            "6 · Resurrection",
+            "Row live in A and B",
+            live_a,
+            live_meta,
+            step_ok,
+            live_b,
+            show_arrow=False,
+            footer="Normal steady state",
+        ),
+        scene_layout(
+            "6 · Resurrection",
+            "Delete: hard-remove data, soft-delete meta",
+            empty_row(),
+            [("id", "1"), ("hash", "0"), ("update_ts", "t3 ↑"), ("delete_ts", "t3")],
+            step_ok,
+            live_b,
+            a_badge="GONE",
+            a_badge_color=DANGER,
+            a_hl="deleted",
+            meta_badge="soft",
+            meta_badge_color=DANGER,
+            meta_hl="deleted",
+            show_arrow=False,
+            footer="delete_ts set; update_ts bumps → downstream schedules cleanup",
+        ),
+        scene_layout(
+            "6 · Resurrection",
+            "Transform runs with empty input → B cleaned",
+            empty_row(),
+            [("id", "1"), ("hash", "0"), ("update_ts", "t3"), ("delete_ts", "t3")],
+            [("id", "1"), ("process_ts", "t2"), ("is_success", "true")],
+            empty_row(),
+            step_badge="RUN",
+            step_badge_color=ACCENT,
+            step_hl="active",
+            b_badge="DEL",
+            b_badge_color=DANGER,
+            b_hl="deleted",
+            arrow_label="delete path",
+            arrow_color=DANGER,
+            footer="Typical path: no idx param → None → delete B for key 1",
+        ),
+        scene_layout(
+            "6 · Resurrection",
+            "Same primary key written again → resurrected",
+            [("id", "1"), ("value", "hello again")],
+            [("id", "1"), ("hash", "H2"), ("update_ts", "t4 ↑"), ("delete_ts", "NULL")],
+            [("id", "1"), ("process_ts", "t3"), ("is_success", "true")],
+            empty_row(),
+            a_badge="BACK",
+            a_badge_color=OK,
+            a_hl="active",
+            meta_badge="↑",
+            meta_badge_color=OK,
+            meta_hl="active",
+            show_arrow=False,
+            footer="delete_ts cleared; update_ts > step.process_ts → dirty again",
+        ),
+        scene_layout(
+            "6 · Resurrection",
+            "Transform re-runs → B rebuilt for key 1",
+            [("id", "1"), ("value", "hello again")],
+            [("id", "1"), ("hash", "H2"), ("update_ts", "t4"), ("delete_ts", "NULL")],
+            [("id", "1"), ("process_ts", "t5"), ("is_success", "true")],
+            [("id", "1"), ("value", "HELLO AGAIN")],
+            step_badge="OK",
+            step_badge_color=OK,
+            b_badge="NEW",
+            b_badge_color=OK,
+            b_hl="active",
+            arrow_label="func(A) → B",
+            arrow_color=OK,
+            footer="Resurrection mirrors delete — meta drives scheduling, not live reads",
+        ),
+    ]
+    save_gif(frames, OUT_DIR / "06-resurrection.gif")
+
+
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     gif_insert()
     gif_update()
     gif_delete()
     gif_unchanged()
+    gif_processed_idx()
+    gif_resurrection()
     print(f"done → {OUT_DIR}")
 
 

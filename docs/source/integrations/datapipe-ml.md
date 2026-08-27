@@ -1,6 +1,6 @@
 # datapipe-ml reference
 
-`datapipe-ml` adds CV/ML **PipelineStep** implementations on top of `datapipe-core`. Class names below are taken from the package source (discover live with `datapipe step list` on your app).
+`datapipe-ml` adds CV/ML **PipelineStep** implementations on top of `datapipe-core`. For parameter tables and wiring examples, use the step reference docs below rather than duplicating class lists here.
 
 ## Install extras
 
@@ -18,70 +18,39 @@ uv pip install -e "libs/datapipe-ml[torch,fiftyone,tensorflow]"
 
 S3 listing/download often needs `datapipe-core[s3fs]`. Ray-backed steps need the `ray` extra on the example / app env (see example READMEs).
 
-## PipelineStep classes
+## Step reference (parameter docs)
 
-### Detection (`datapipe_ml.tasks.detection`)
-
-| Class | Role |
+| Topic | Page |
 |---|---|
-| `Train_YoloV8_DetectionModel` | Train Ultralytics YOLOv8 detection |
-| `Train_YoloV5_DetectionModel` | Train YOLOv5 detection |
-| `Inference_DetectionModel` | Run detection inference |
-| `InferenceBySplitOnCrops_DetectionModel` | Infer on cropped tiles |
-| `Inference_UsingThresholdsPerClasss_DetectionModel` | Infer with per-class thresholds |
-| `CountMetrics_Subset_DetectionModel` | Metrics on a labeled subset |
+| Overview, task matrix, all task families | [ML steps index](../reference/steps/ml/index.md) |
+| Freeze snapshots, `FindBestModel` | [Freeze dataset](../reference/steps/ml/freeze-dataset.md) |
+| Detection inference (+ crop / threshold variants) | [Detection inference](../reference/steps/ml/detection/inference.md) |
+| YOLOv8 detection training + config types | [Train YOLOv8 detection](../reference/steps/ml/detection/train-yolov8.md) |
 
-### Keypoints (`datapipe_ml.tasks.keypoints`)
+Discover live step names on your app:
 
-| Class | Role |
-|---|---|
-| `Train_YoloV8_KeypointsModel` | Train pose / keypoints model |
-| `Inference_KeypointsModel` | Keypoints inference |
-| `InferenceBySplitOnCrops_KeypointsModel` | Infer on crops |
-| `CountMetrics_Subset_KeypointsModel` | Metrics on a subset |
-| `CountMetrics_FrozenDataset_KeypointsModel` | Metrics on a frozen dataset |
+```bash
+datapipe --pipeline app:app step list
+```
 
-### Segmentation (`datapipe_ml.tasks.segmentation`)
+### Other step classes (see source / `step list`)
 
-| Class | Role |
-|---|---|
-| `Train_YoloV8_SegmentationModel` | Train YOLOv8 segmentation |
-| `Inference_SegmentationModel` | Segmentation inference |
-| `InferenceBySplitOnCrops_SegmentationModel` | Infer on crops |
-| `Inference_UsingThresholdsPerClasss_SegmentationModel` | Per-class threshold inference |
-
-### Classification (`datapipe_ml.tasks.classification`)
-
-| Class | Role |
-|---|---|
-| `Train_Tensorflow_ClassificationModel` | TF classification training |
-| `Inference_ClassificationModel` | Classification inference |
-| `CountMetrics_Subset_ClassificationModel` | Classification metrics on a subset |
-
-### Datasets / metrics / statistics
-
-| Class | Module area | Role |
+| Area | Module | Notable classes |
 |---|---|---|
-| `FreezeDatasetStep` | `datasets.freeze` | Freeze train/val (etc.) snapshot tables for reproducible training |
-| `FindBestModel` | `metrics.model_selection` | Pick best model row from metrics tables |
-| `CountTotalLabelOnSubset` | `statistics.total` | Label counts on a subset |
-| `CountTotalLabel` | `statistics.total` | Global label counts |
+| Detection | `datapipe_ml.tasks.detection` | `Train_YoloV5_DetectionModel`, `CountMetrics_Subset_DetectionModel` |
+| Keypoints | `datapipe_ml.tasks.keypoints` | `Train_YoloV8_KeypointsModel`, `Inference_KeypointsModel`, metrics steps |
+| Segmentation | `datapipe_ml.tasks.segmentation` | `Train_YoloV8_SegmentationModel`, `Inference_SegmentationModel` |
+| Classification | `datapipe_ml.tasks.classification` | `Train_Tensorflow_ClassificationModel`, `Inference_ClassificationModel` |
+| Workflows | `datapipe_ml.workflows.detection_classification` | `Define_PipelineModel`, `Inference_PipelineModel`, threshold search |
+| Statistics | `datapipe_ml.statistics.total` | `CountTotalLabel`, `CountTotalLabelOnSubset` |
 
-### Detection↔classification workflow (`workflows.detection_classification`)
-
-| Class | Role |
-|---|---|
-| `Define_PipelineModel` | Define a combined pipeline model |
-| `Inference_PipelineModel` | Run the combined model |
-| `CountMetrics_Subset_PipelineModel` | Combined metrics on a subset |
-| `Inference_And_FindBestThresholdsPerClasssOnSubset_DetectionModel` | Threshold search (detection) |
-| `Inference_And_FindBestThresholdsPerClasssOnSubset_SegmentationModel` | Threshold search (segmentation) |
+Task-specific freeze wrappers (`DetectionFreezeDataset`, …) are documented under [Freeze dataset](../reference/steps/ml/freeze-dataset.md).
 
 ## Observability plugin (not inside datapipe-ml alone)
 
 ML Ops panels need:
 
-- `datapipe-app-ml-ops` — ops specs, metrics/training APIs
+- `datapipe-app-ml-ops` — ops specs, metrics/training APIs — [Ops specs](../ops/ops-specs.md)
 - `datapipe-ui-ml` — SPA plugin (preferred static entry when `[ml]` is installed)
 
 ## Living examples
@@ -94,4 +63,5 @@ Prefer runnable apps over this index when learning:
 ## See also
 
 - [ML mental model](./ml-overview.md)
+- [Label Studio integration](./label-studio.md)
 - [Ops](../ops/index.md)

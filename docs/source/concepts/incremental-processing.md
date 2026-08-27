@@ -28,7 +28,7 @@ Same primary key, different content → different CityHash. `update_ts` moves fo
 
 ![Delete: soft meta delete propagates to B](../assets/incremental/03-delete.gif)
 
-Data is **hard-deleted** from the store. Meta keeps the key with `delete_ts` set and bumps `update_ts` (soft delete). The step still runs. With empty inputs (and no `idx` parameter on `func`), Datapipe returns `None` and cleans B for that index.
+Data is **hard-deleted** from the store. Meta keeps the key with `delete_ts` set and bumps `update_ts` (soft delete). The step still runs. With empty inputs (and no `idx` parameter on `func`), Datapipe returns `None` and cleans B for that index. See [Soft Delete](./soft-delete.md) for the two-layer model and [The `idx` Parameter](./idx-parameter.md) when your function declares `idx`.
 
 ### 4. Unchanged — rewrite with the same content
 
@@ -61,9 +61,27 @@ Identical rewrites bump only table `process_ts`, not `update_ts` — so they do 
 | Delete | Yes | Usually no* | Empty | Delete B for idx |
 | Same hash | No | No | — | None |
 
-\*If `func` declares an `idx` parameter, it is still called with empty DataFrames on delete.
+\*If `func` declares an `idx` parameter, it is still called with empty DataFrames on delete — see [The `idx` Parameter](./idx-parameter.md).
 
 You do **not** write change-detection logic. Receive a `pd.DataFrame` batch, return a `pd.DataFrame` (or tuple). Datapipe owns the index set.
+
+## Advanced cases
+
+### Output cleanup (`processed_idx`)
+
+When a transform returns only part of the output rows for a batch, Datapipe deletes keys that fall under the batch index but are missing from the result. Common in 1-to-N pipelines — easy to cause **silent data loss** if you omit rows unintentionally.
+
+![Partial batch output deletes missing B rows](../assets/incremental/05-processed-idx.gif)
+
+→ [Output Cleanup and `processed_idx`](./processed-idx.md)
+
+### Resurrection
+
+Re-inserting a row under the same primary key after soft delete clears `delete_ts`, bumps `update_ts`, and schedules downstream steps again.
+
+![Soft delete then undelete resurrects the key](../assets/incremental/06-resurrection.gif)
+
+→ [Soft Delete](./soft-delete.md#resurrection)
 
 ## Full run vs changelist
 
@@ -79,6 +97,11 @@ After each successful batch, transform meta is updated. If the process crashes m
 ## See also
 
 - [What is Datapipe?](./what-is-datapipe.md) — product overview
+- [Soft Delete](./soft-delete.md) — hard vs soft delete, resurrection
+- [Output Cleanup and `processed_idx`](./processed-idx.md) — 1-to-N and partial outputs
+- [Transform Grain](./transform-grain.md) — `transform_keys`, multi-input scheduling
+- [The `idx` Parameter](./idx-parameter.md) — delete path with vs without `idx`
+- [BatchGenerate vs BatchTransform](./generate-vs-transform.md) — generator vs step meta
 - [Primary Keys and Transform Keys](./primary-keys.md) — how keys join across tables
 - [Change Detection and Merging](../explanation/change-detection.md) — SQL-level detail
 - [Meta-Table Schema](../explanation/meta-table-schema.md) — column definitions

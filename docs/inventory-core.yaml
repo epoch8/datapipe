@@ -245,7 +245,7 @@ symbols:
   qualname: datapipe.compute.ComputeStep
   bases: []
   line: 202
-  docs_page: reference/pipeline-catalog.md
+  docs_page: reference/compute-step.md
   docs_in_summary: true
   docs_exists: true
   docs_stub: false

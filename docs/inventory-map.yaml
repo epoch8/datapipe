@@ -10,7 +10,10 @@ symbols:
   Catalog: reference/pipeline-catalog.md
   Pipeline: reference/pipeline-catalog.md
   PipelineStep: reference/pipeline-catalog.md
-  ComputeStep: reference/pipeline-catalog.md
+  ComputeStep: reference/compute-step.md
+  ComputeInput: reference/compute-step.md
+  ComputeOutput: reference/compute-step.md
+  StepStatus: reference/compute-step.md
   DatapipeApp: reference/pipeline-catalog.md
   build_compute: reference/pipeline-catalog.md
   run_pipeline: reference/pipeline-catalog.md
@@ -19,6 +22,21 @@ symbols:
   run_steps_changelist: reference/pipeline-catalog.md
   DataTable: reference/table.md
   DataStore: reference/table.md
+
+  # Run configuration and lifecycle
+  RunConfig: reference/run-config.md
+  RunCallback: reference/run-config.md
+  CompositeRunCallback: reference/run-config.md
+  CancelToken: reference/run-config.md
+  RunCancelledError: reference/run-config.md
+  get_cancel_token: reference/run-config.md
+  cancel_token_scope: reference/run-config.md
+
+  # Metadata
+  TableMeta: reference/meta.md
+  TransformMeta: reference/meta.md
+  MetaPlane: reference/meta.md
+  TableDebugInfo: reference/meta.md
 
   # Types
   Required: reference/types.md

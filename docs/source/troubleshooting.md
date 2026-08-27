@@ -23,11 +23,21 @@ Ops “runs” can still be recorded even when almost no `func` work happens.
 | Data store | **Hard delete** — row removed from the store |
 | Table meta | **Soft delete** — key kept with `delete_ts` set; `update_ts` bumps so downstream steps still schedule |
 
-Downstream cleanup is driven by meta, not by “row still in the store.” Details and the delete GIF: [Incremental Processing](./concepts/incremental-processing.md).
+Downstream cleanup is driven by meta, not by “row still in the store.” Details: [Soft Delete](./concepts/soft-delete.md) and the delete GIF in [Incremental Processing](./concepts/incremental-processing.md). Re-inserting the same key after delete is **resurrection** — see [Soft Delete § Resurrection](./concepts/soft-delete.md#resurrection) and [06-resurrection.gif](./concepts/incremental-processing.md#resurrection).
+
+## Stale or missing output rows after a transform
+
+Often **`processed_idx`** cleanup: the batch index defines which output keys this run owns; rows under that index but absent from your returned DataFrame are deleted. In 1-to-N steps, returning only part of the child set **silently removes** the rest.
+
+→ [Output Cleanup and `processed_idx`](./concepts/processed-idx.md) · GIF: [05-processed-idx](./concepts/incremental-processing.md#output-cleanup-processed_idx)
+
+Wrong **`transform_keys`** or multi-input join grain can also schedule the wrong units of work or skip pairs you expected.
+
+→ [Transform Grain](./concepts/transform-grain.md)
 
 ## Where are the incremental GIFs / docs?
 
-Four short animations (insert, update, delete, unchanged) live on:
+Six short animations (insert, update, delete, unchanged, processed_idx, resurrection) live on:
 
 → **[Incremental Processing](./concepts/incremental-processing.md)**
 
@@ -76,5 +86,6 @@ run_config = RunConfig(fail_fast=True)
 ## See also
 
 - [Incremental Processing](./concepts/incremental-processing.md) — start here
+- [Soft Delete](./concepts/soft-delete.md) · [Transform Grain](./concepts/transform-grain.md) · [Output Cleanup and `processed_idx`](./concepts/processed-idx.md)
 - [Change Detection and Merging](./explanation/change-detection.md)
 - [CLI reference](./reference/cli.md)

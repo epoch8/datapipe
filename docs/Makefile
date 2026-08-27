@@ -1,12 +1,15 @@
-# brew install mdbook
+# Prefer local binary docs/.bin/mdbook (no system install needed).
+MDBOOK ?= $(shell if [ -x .bin/mdbook ]; then echo .bin/mdbook; \
+	elif command -v mdbook >/dev/null 2>&1; then command -v mdbook; \
+	else echo mdbook; fi)
 
 .PHONY: build serve inventory inventory-strict gifs
 
 build:
-	mdbook build
+	$(MDBOOK) build
 
 serve:
-	mdbook serve
+	$(MDBOOK) serve
 
 # Discover datapipe-core pipe surfaces and write docs/inventory-core.yaml
 inventory:
