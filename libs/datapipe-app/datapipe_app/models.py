@@ -64,3 +64,30 @@ class RunStepResponse(BaseModel):
     status: Literal["starting", "running", "finished"]
     processed: int
     total: int
+
+
+class TableSizeResponse(BaseModel):
+    table: str
+    size: int
+
+
+class AddonCapability(BaseModel):
+    """Opaque capability bag contributed by an external addon library."""
+
+    name: str
+    features: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CapabilitiesResponse(BaseModel):
+    pipeline_id: Optional[str] = None
+    addons: List[AddonCapability] = Field(default_factory=list)
+
+
+class SettingsResponse(BaseModel):
+    pipeline_id: Optional[str] = None
+    version: str
+
+
+class ResetTransformMetadataResponse(BaseModel):
+    transform_name: str
+    status: str = "ok"
