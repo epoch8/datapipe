@@ -79,12 +79,10 @@ class AddonCapability(BaseModel):
 
 
 class CapabilitiesResponse(BaseModel):
-    pipeline_id: Optional[str] = None
     addons: List[AddonCapability] = Field(default_factory=list)
 
 
 class SettingsResponse(BaseModel):
-    pipeline_id: Optional[str] = None
     version: str
 
 

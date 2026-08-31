@@ -45,16 +45,12 @@ def make_app(
     @app.get("/capabilities", response_model=models.CapabilitiesResponse)
     def get_capabilities() -> models.CapabilitiesResponse:
         return models.CapabilitiesResponse(
-            pipeline_id=app_settings.API_SETTINGS.pipeline_id,
             addons=collect_addon_capabilities(extra=addons),
         )
 
     @app.get("/settings", response_model=models.SettingsResponse)
     def get_settings() -> models.SettingsResponse:
-        return models.SettingsResponse(
-            pipeline_id=app_settings.API_SETTINGS.pipeline_id,
-            version=_package_version(),
-        )
+        return models.SettingsResponse(version=_package_version())
 
     @app.get("/graph", response_model=models.GraphResponse)
     def get_graph() -> models.GraphResponse:
