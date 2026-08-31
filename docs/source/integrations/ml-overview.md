@@ -41,7 +41,7 @@ uv sync --extra ray
 cp .env.example .env && set -a && source .env && set +a
 
 # monorepo root — build Ops UI once
-cd ../.. && yarn install && yarn workspace @datapipe/ui build:package
+cd ../.. && yarn install && yarn workspace @datapipe/ui-ml build:package
 
 cd examples/detection_tags
 HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d
@@ -70,7 +70,7 @@ cp .env.example .env
 # set LABEL_STUDIO_API_KEY (UI or scripts/label_studio_token.py)
 set -a && source .env && set +a
 
-cd ../.. && yarn install && yarn workspace @datapipe/ui build:package
+cd ../.. && yarn install && yarn workspace @datapipe/ui-ml build:package
 
 cd examples/e2e_template
 uv run python scripts/seed_sample_data.py
@@ -91,7 +91,7 @@ Keypoints / classification use the same pattern with ports `8002` / `8003` and t
 
 ## Ops UI for ML
 
-Install `datapipe-app[ml]`, build UI assets (`yarn workspace @datapipe/ui build:package` or `make -C libs/datapipe-ui-ml build-package`), run `datapipe api`. See [Ops UI walkthrough](../ops/ui-walkthrough.md).
+Install `datapipe-app[ml]`, build UI assets (`yarn workspace @datapipe/ui-ml build:package` or `make -C libs/datapipe-ui-ml build-package`), run `datapipe api`. See [Ops UI walkthrough](../ops/ui-walkthrough.md).
 
 ## Next
 

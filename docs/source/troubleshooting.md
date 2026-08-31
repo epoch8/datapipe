@@ -6,13 +6,13 @@ Short answers to common “why isn’t it doing what I expect?” questions. Mos
 
 **Expected.** If inputs were rewritten with the **same content**, CityHash matches, `update_ts` does not move, and the step is not scheduled. Your `func` never runs — that is the incremental win.
 
-See the “Unchanged” GIF and scheduling rule in [Incremental Processing](./concepts/incremental-processing.md).
+See the “Unchanged” panels and scheduling rule in [Incremental Processing](./concepts/incremental-processing.md).
 
 To force work: change content, delete keys, reset transform meta (`datapipe step reset-metadata`), or fix a failed run (`is_success=False` keeps keys dirty).
 
 ## Empty dirty set / run finishes instantly
 
-Same story: no keys where `max(input.update_ts) > step.process_ts` (and no missing / failed step rows). Check table and step `*_meta`, or watch the insert/update/delete GIFs on the incremental page.
+Same story: no keys where `max(input.update_ts) > step.process_ts` (and no missing / failed step rows). Check table and step `*_meta`, or study the insert/update/delete panels on the incremental page.
 
 Ops “runs” can still be recorded even when almost no `func` work happens.
 
@@ -23,25 +23,25 @@ Ops “runs” can still be recorded even when almost no `func` work happens.
 | Data store | **Hard delete** — row removed from the store |
 | Table meta | **Soft delete** — key kept with `delete_ts` set; `update_ts` bumps so downstream steps still schedule |
 
-Downstream cleanup is driven by meta, not by “row still in the store.” Details: [Soft Delete](./concepts/soft-delete.md) and the delete GIF in [Incremental Processing](./concepts/incremental-processing.md). Re-inserting the same key after delete is **resurrection** — see [Soft Delete § Resurrection](./concepts/soft-delete.md#resurrection) and [06-resurrection.gif](./concepts/incremental-processing.md#resurrection).
+Downstream cleanup is driven by meta, not by “row still in the store.” Details: [Soft Delete](./concepts/soft-delete.md) and the delete panels in [Incremental Processing](./concepts/incremental-processing.md). Re-inserting the same key after delete is **resurrection** — see [Soft Delete § Resurrection](./concepts/soft-delete.md#resurrection).
 
 ## Stale or missing output rows after a transform
 
 Often **`processed_idx`** cleanup: the batch index defines which output keys this run owns; rows under that index but absent from your returned DataFrame are deleted. In 1-to-N steps, returning only part of the child set **silently removes** the rest.
 
-→ [Output Cleanup and `processed_idx`](./concepts/processed-idx.md) · GIF: [05-processed-idx](./concepts/incremental-processing.md#output-cleanup-processed_idx)
+→ [Output Cleanup and `processed_idx`](./concepts/processed-idx.md) · figure: [05-processed-idx](./concepts/incremental-processing.md#output-cleanup-processed_idx)
 
 Wrong **`transform_keys`** or multi-input join grain can also schedule the wrong units of work or skip pairs you expected.
 
 → [Transform Grain](./concepts/transform-grain.md)
 
-## Where are the incremental GIFs / docs?
+## Where are the incremental figures / docs?
 
-Six short animations (insert, update, delete, unchanged, processed_idx, resurrection) live on:
+Six **Before / During / After** table panels (insert, update, delete, unchanged, processed_idx, resurrection) live on:
 
 → **[Incremental Processing](./concepts/incremental-processing.md)**
 
-Source assets: `docs/source/assets/incremental/*.gif` (rendered by `docs/scripts/render_incremental_gifs.py`).
+Source assets: `docs/source/assets/incremental/*.png` (Before / During / After table panels from `docs/scripts/render_incremental_panels.py`).
 
 ## SQLite errors / old SQLite version
 

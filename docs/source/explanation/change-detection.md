@@ -49,7 +49,7 @@ Returned indexes drive inserts vs updates; returned meta frames drive the upsert
 
 ## Four cases (A → B)
 
-The single-key pipeline cases map directly onto the table above. GIFs and a function-level view live in the concepts page:
+The single-key pipeline cases map directly onto the table above. Before/During/After figures and a function-level view live in the concepts page:
 
 1. **Insert** — [01-insert](../concepts/incremental-processing.md#1-insert--new-data-appears)
 2. **Update** — [02-update](../concepts/incremental-processing.md#2-update--content-changes)
@@ -147,7 +147,7 @@ Changing either a model or an image bumps the combined `update_ts` for every aff
 
 ## See also
 
-- [Incremental Processing](../concepts/incremental-processing.md) — four cases with GIFs
+- [Incremental Processing](../concepts/incremental-processing.md) — four cases with table panels
 - [Meta-Table Schema](./meta-table-schema.md) — column definitions
 - [Compute Step Lifecycle](./compute-step-lifecycle.md) — how batches run once indexes are selected
 - [Primary Keys and Transform Keys](../concepts/primary-keys.md)

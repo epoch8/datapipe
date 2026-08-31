@@ -41,4 +41,4 @@ Work units are `pd.DataFrame` chunks (`chunk_size` on `BatchTransform`), not sin
 
 1. [Installation](../getting-started/installation.md)
 2. [Your First Pipeline](../getting-started/first-pipeline.md)
-3. [Incremental Processing](./incremental-processing.md) — the four GIFs
+3. [Incremental Processing](./incremental-processing.md) — the four table-panel cases

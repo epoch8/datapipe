@@ -35,16 +35,18 @@ Additional dependencies used by examples:
 
 ## Task matrix
 
+Documented pages are linked. Entries marked **module only / not yet documented** exist in the package but have no dedicated docs page yet.
+
 | Task | Freeze | Train | Inference | Metrics | Model selection |
 |---|---|---|---|---|---|
-| Detection | [`DetectionFreezeDataset`](./freeze-dataset.md#detectionfreezedataset) (wraps `FreezeDatasetStep`) | [`Train_YoloV8_DetectionModel`](./detection/train-yolov8.md), `Train_YoloV5_DetectionModel` | [`Inference_DetectionModel`](./detection/inference.md) (+ crop / threshold variants) | `CountMetrics_Subset_DetectionModel`, `CountMetrics_Subset_PipelineModel` | [`FindBestModel`](./freeze-dataset.md#findbestmodel) |
-| Segmentation | `SegmentationFreezeDataset` | `Train_YoloV8_SegmentationModel` | `Inference_SegmentationModel`, crop / threshold variants | (subset metrics in package) | `FindBestModel` |
-| Keypoints | `KeypointsFreezeDataset` | `Train_YoloV8_KeypointsModel` | `Inference_KeypointsModel`, crop variant | `CountMetrics_Subset_KeypointsModel`, `CountMetrics_FrozenDataset_KeypointsModel` | `FindBestModel` |
-| Classification | `ClassificationFreezeDataset` | `Train_Tensorflow_ClassificationModel` | `Inference_ClassificationModel` | `CountMetrics_Subset_ClassificationModel` | `FindBestModel` |
+| Detection | [`DetectionFreezeDataset`](./freeze-dataset.md#detectionfreezedataset) | [`Train_YoloV8_DetectionModel`](./detection/train-yolov8.md); `Train_YoloV5_DetectionModel` (**module only / not yet documented**) | [`Inference_DetectionModel`](./detection/inference.md) (+ crop / threshold variants) | `CountMetrics_Subset_DetectionModel`, `CountMetrics_Subset_PipelineModel` (**module only / not yet documented**) | [`FindBestModel`](./freeze-dataset.md#findbestmodel) |
+| Segmentation | `SegmentationFreezeDataset` (**module only / not yet documented**) | `Train_YoloV8_SegmentationModel` (**module only / not yet documented**) | `Inference_SegmentationModel` (+ variants) (**module only / not yet documented**) | subset metrics (**module only / not yet documented**) | [`FindBestModel`](./freeze-dataset.md#findbestmodel) |
+| Keypoints | `KeypointsFreezeDataset` (**module only / not yet documented**) | `Train_YoloV8_KeypointsModel` (**module only / not yet documented**) | `Inference_KeypointsModel` (+ crop) (**module only / not yet documented**) | `CountMetrics_Subset_KeypointsModel`, `CountMetrics_FrozenDataset_KeypointsModel` (**module only / not yet documented**) | [`FindBestModel`](./freeze-dataset.md#findbestmodel) |
+| Classification | `ClassificationFreezeDataset` (**module only / not yet documented**) | `Train_Tensorflow_ClassificationModel` (**module only / not yet documented**) | `Inference_ClassificationModel` (**module only / not yet documented**) | `CountMetrics_Subset_ClassificationModel` (**module only / not yet documented**) | [`FindBestModel`](./freeze-dataset.md#findbestmodel) |
 
-Workflow helpers under `datapipe_ml.workflows.detection_classification` combine detection with downstream classification (`Define_PipelineModel`, `Inference_PipelineModel`, threshold search steps).
+Workflow helpers under `datapipe_ml.workflows.detection_classification` (**module only / not yet documented**): `Define_PipelineModel`, `Inference_PipelineModel`, threshold search steps.
 
-Statistics helpers: `CountTotalLabel`, `CountTotalLabelOnSubset` (`datapipe_ml.statistics.total`).
+Statistics helpers (**module only / not yet documented**): `CountTotalLabel`, `CountTotalLabelOnSubset` (`datapipe_ml.statistics.total`).
 
 ## Documented step groups
 
@@ -54,7 +56,7 @@ Statistics helpers: `CountTotalLabel`, `CountTotalLabelOnSubset` (`datapipe_ml.s
 | [Detection inference](./detection/inference.md) | `Inference_DetectionModel` and variants |
 | [Detection train (YOLOv8)](./detection/train-yolov8.md) | `Train_YoloV8_DetectionModel`, `YoloV8_TrainingConfig`, training DTOs |
 
-Other task families (segmentation, keypoints, classification, YOLOv5) follow the same patterns; see module paths in the integration index.
+Other task families (segmentation, keypoints, classification, YOLOv5) are **module only / not yet documented** — inspect the package sources; they follow the same patterns as the detection pages above. See module paths in the integration index.
 
 ## Wiring example
 

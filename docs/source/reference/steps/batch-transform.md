@@ -213,7 +213,7 @@ def get_full_process_ids(
 
 ### Behavior notes
 
-- Merges step `filters` into `run_config` via `_apply_filters_to_run_config`.
+- Merges step `filters` into `run_config` via `_apply_filters_to_run_config` (internal).
 - Delegates to `meta.get_full_process_ids` with `chunk_size or self.chunk_size`.
 
 ---
@@ -361,7 +361,7 @@ def store_batch_result(
 ### Behavior notes
 
 - Normalizes single vs list/tuple outputs to match `output_dts` length.
-- Maps batch index to output keys via `_transform_idx_to_output_idx`.
+- Maps batch index to output keys via `_transform_idx_to_output_idx` (internal).
 - `None` result: deletes existing output rows for the batch index.
 - Calls `meta.mark_rows_processed_success`.
 
@@ -483,9 +483,13 @@ def run_idx(
 
 ---
 
-## `BaseBatchTransformStep._apply_filters_to_run_config`
+## Internal helpers (private API)
 
-When to use: Internal — merge step `filters` (dict or callable) into run config.
+These methods are **internal** — not part of the public step surface. Documented only so store/filter behavior in the sections above is traceable. Prefer the public `run_*` / `store_batch_*` APIs.
+
+### `BaseBatchTransformStep._apply_filters_to_run_config` (internal)
+
+Merges step `filters` (dict or callable) into run config.
 
 ```python
 def _apply_filters_to_run_config(self, run_config: RunConfig | None = None) -> RunConfig | None: ...
@@ -497,9 +501,9 @@ def _apply_filters_to_run_config(self, run_config: RunConfig | None = None) -> R
 
 ---
 
-## `BaseBatchTransformStep._transform_idx_to_output_idx`
+### `BaseBatchTransformStep._transform_idx_to_output_idx` (internal)
 
-When to use: Static helper — map transform batch index to output table primary keys.
+Maps transform batch index to output table primary keys for `processed_idx`.
 
 ```python
 @staticmethod

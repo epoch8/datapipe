@@ -21,24 +21,24 @@ The key discipline of Diátaxis: each page belongs to **exactly one quadrant**. 
 docs/
 ├── README.md                  ← you are here
 ├── book.toml                  ← mdBook configuration
-├── Makefile                   ← build / inventory / gifs
+├── Makefile                   ← build / inventory / panels
 ├── inventory-map.yaml         ← symbol → page map
 ├── inventory-core.yaml        ← generated coverage snapshot
 ├── scripts/
 │   ├── inventory_core.py
-│   └── render_incremental_gifs.py
+│   └── render_incremental_panels.py
 └── source/
     ├── SUMMARY.md             ← TOC
     ├── troubleshooting.md
     ├── getting-started/
-    ├── concepts/              ← includes Incremental Processing + GIFs
+    └── concepts/              ← includes Incremental Processing + table panels
     ├── how-to/
     ├── reference/
     ├── ops/                   ← App / UI / observability
     ├── integrations/          ← ML / Label Studio / CVAT
     ├── explanation/
     ├── migration/
-    └── assets/incremental/    ← regenerable GIFs
+    └── assets/incremental/    ← before/during/after PNG panels
 ```
 
 ## Tooling
@@ -60,15 +60,15 @@ Edit `inventory-map.yaml` when you add a new public step/store/CLI command. Gene
 
 Authoring templates for reference pages: [writer-guide.md](./writer-guide.md).
 
-### Incremental GIFs
+### Incremental panels
 
-Four explainers for insert / update / delete / unchanged:
+Static **Before / During / After** table figures (amber = active index):
 
 ```bash
-cd docs && make gifs
+cd docs && make panels
 ```
 
-Writes `source/assets/incremental/*.gif`. Commit the GIFs so mdBook/RTD need no renderer. Embedded from [Incremental Processing](./source/concepts/incremental-processing.md).
+Writes `source/assets/incremental/*.png`. Embedded from [Incremental Processing](./source/concepts/incremental-processing.md).
 
 ### mdBook (primary)
 

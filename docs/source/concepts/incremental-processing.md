@@ -8,33 +8,37 @@ A (input) ──BatchTransform──► B (output)
      └── metadata tracks what changed
 ```
 
-Before the deep dive, watch the four cases below. They use a single-key A→B pipeline.
+Before the deep dive, study the four cases below. Each figure shows **Before → During → After** table states. **Amber** rows are the indexes being processed; teal = written; red = deleted; gray = untouched.
 
 ## The four cases
 
 ### 1. Insert — new data appears
 
-![Insert: new row schedules the transform](../assets/incremental/01-insert.gif)
+![Insert: empty tables → id=1 active → B written](../assets/incremental/01-insert.png)
 
-A new row is written to A. Meta gets a fresh `hash` and `update_ts`. The transform has no `process_ts` for that key yet, so it is selected. Your function runs; B is written.
+A new record shows up on A. Datapipe marks that index dirty, runs your function once, and writes B.  
+*Internals:* fresh content fingerprint and timestamps; the step has never processed this key.
 
 ### 2. Update — content changes
 
-![Update: hash change bumps update_ts and re-runs](../assets/incremental/02-update.gif)
+![Update: only id=1 highlighted while id=2 stays idle](../assets/incremental/02-update.png)
 
-Same primary key, different content → different CityHash. `update_ts` moves forward. Because `update_ts > process_ts`, the key is scheduled again. B is updated for that key only.
+Same key, different content → only that index is active → your function re-runs → only that key’s B row updates. Neighboring keys stay gray.  
+*Internals:* fingerprint changes and the input is newer than the step’s last success.
 
 ### 3. Delete — data disappears
 
-![Delete: soft meta delete propagates to B](../assets/incremental/03-delete.gif)
+![Delete: id=1 gone from A → cleanup → gone from B](../assets/incremental/03-delete.png)
 
-Data is **hard-deleted** from the store. Meta keeps the key with `delete_ts` set and bumps `update_ts` (soft delete). The step still runs. With empty inputs (and no `idx` parameter on `func`), Datapipe returns `None` and cleans B for that index. See [Soft Delete](./soft-delete.md) for the two-layer model and [The `idx` Parameter](./idx-parameter.md) when your function declares `idx`.
+A loses the row; Datapipe still schedules that index and cleans the matching key on B.  
+*Internals:* hard delete in the store + soft delete in meta. See [Soft Delete](./soft-delete.md) and [The `idx` Parameter](./idx-parameter.md).
 
 ### 4. Unchanged — rewrite with the same content
 
-![Unchanged: same hash skips the transform](../assets/incremental/04-unchanged.gif)
+![Unchanged: no amber rows — function does not run](../assets/incremental/04-unchanged.png)
 
-Writing the same values again matches the existing `hash`. **Data is not rewritten.** `update_ts` does **not** move (A_meta `process_ts` may still bump). The step is **not** scheduled. Your function never runs. This is the incremental win.
+Same content rewritten → **no index is active** → your function is not called → B untouched. This is the incremental win.  
+*Internals:* fingerprint matches; input timestamps do not make the step dirty.
 
 ## Metadata legend
 
@@ -71,7 +75,7 @@ You do **not** write change-detection logic. Receive a `pd.DataFrame` batch, ret
 
 When a transform returns only part of the output rows for a batch, Datapipe deletes keys that fall under the batch index but are missing from the result. Common in 1-to-N pipelines — easy to cause **silent data loss** if you omit rows unintentionally.
 
-![Partial batch output deletes missing B rows](../assets/incremental/05-processed-idx.gif)
+![processed_idx: child c omitted from return → deleted](../assets/incremental/05-processed-idx.png)
 
 → [Output Cleanup and `processed_idx`](./processed-idx.md)
 
@@ -79,7 +83,7 @@ When a transform returns only part of the output rows for a batch, Datapipe dele
 
 Re-inserting a row under the same primary key after soft delete clears `delete_ts`, bumps `update_ts`, and schedules downstream steps again.
 
-![Soft delete then undelete resurrects the key](../assets/incremental/06-resurrection.gif)
+![Resurrection: soft-deleted id=1 re-inserted → transform runs again](../assets/incremental/06-resurrection.png)
 
 → [Soft Delete](./soft-delete.md#resurrection)
 

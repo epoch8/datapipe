@@ -17,7 +17,7 @@ Run the two-part demo: freeze val up front, train model A, checkpoint, add night
 Build Ops UI assets once from the monorepo root:
 
 ```bash
-cd ../.. && yarn install && yarn workspace @datapipe/ui build:package
+cd ../.. && yarn install && yarn workspace @datapipe/ui-ml build:package
 ```
 
 ## Example repo
@@ -84,13 +84,16 @@ uv run datapipe db create-all
 The load step reads from cache when present (required where COCO downloads are blocked):
 
 ```bash
+# Run from examples/detection_tags/detection (same cwd as Step 2)
+DETECTION_DIR="$(pwd)"
 set -a && source ../.env && set +a
 BASE=https://storage.yandexcloud.net/e8-demo/datasets/coco-cat-dog-1000
 mkdir -p "$DATAPIPE_TAGS_CACHE_DIR/images" && cd "$DATAPIPE_TAGS_CACHE_DIR"
 curl -sf "$BASE/gt.json" -o gt.json
 python -c "import json; print('\n'.join(json.load(open('gt.json'))))" \
   | xargs -P 16 -I{} curl -sf -o "images/{}" "$BASE/images/{}"
-cd ../../detection
+# Cache dir is absolute — relative ../../detection is wrong; return explicitly
+cd "$DETECTION_DIR"
 ```
 
 Alternative on a COCO-reachable host:

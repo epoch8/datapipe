@@ -35,15 +35,14 @@ When `(1, 42)` is dirty, the transform runs once for that parent key. It might y
 
 See [How to Expand One Row Into Many](../how-to/one-to-many.md) and the animated walkthrough below.
 
-![Partial batch output deletes missing B rows](../assets/incremental/05-processed-idx.gif)
+![processed_idx: child c omitted from return → deleted](../assets/incremental/05-processed-idx.png)
 
 ## Tips & pitfalls
 
 | Pitfall | What goes wrong | What to do |
 |---|---|---|
-| **Partial return without thinking about cleanup** | Old child rows linger forever | Always return the full desired set for the batch's transform keys, or rely on `processed_idx` cleanup intentionally |
-| **Silent data loss** | You omit rows you meant to keep; Datapipe deletes them | Treat every successful run as "replace outputs for this idx slice" |
-| **Wrong output PK / `OutputSpec` mapping** | `processed_idx` columns do not overlap output PKs → cleanup disabled | Align output primary keys and `OutputSpec` key maps with transform keys |
+| **Partial return / omitted children** | Keys in `processed_idx` missing from the result are **deleted** — silent data loss if you meant to keep them | Always return the full desired set for the batch's transform keys; treat every successful run as "replace outputs for this idx slice" |
+| **Wrong output PK / `OutputSpec` mapping** | `processed_idx` columns do not overlap output PKs → cleanup disabled; stale rows **linger** | Align output primary keys and `OutputSpec.keys` with transform keys |
 | **Empty DataFrame vs `None`** | Empty frame still runs `store_chunk` with `processed_idx` → deletes all outputs for the idx; `None` (no `idx` param) uses the explicit delete path | For "delete all children of this parent", either return an empty frame with correct columns or let the delete path run |
 | **Manual `store_chunk` in app code** | No automatic `processed_idx` unless you pass it | When writing from outside a transform, pass `processed_idx` explicitly if you need the same delete semantics |
 

@@ -5,7 +5,7 @@ Read these to understand **why** Datapipe is shaped the way it is.
 ## Reading order
 
 1. [What is Datapipe?](./what-is-datapipe.md) — product overview
-2. [Incremental Processing](./incremental-processing.md) — **start here** (six GIFs: insert, update, delete, unchanged, processed_idx, resurrection)
+2. [Incremental Processing](./incremental-processing.md) — **start here** (Before/During/After panels: insert, update, delete, unchanged, processed_idx, resurrection)
 3. [Tables and TableStores](./tables-and-stores.md) — data vs meta layers
 4. [Pipeline Steps](./pipeline-steps.md) — Generate, Transform, DatatableTransform
 5. [Primary Keys and Transform Keys](./primary-keys.md) — PK vs transform grain

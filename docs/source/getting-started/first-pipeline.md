@@ -100,7 +100,7 @@ You should see both steps execute: `generate_words` fills the `words` table, the
 datapipe run
 ```
 
-This time nothing is reprocessed — datapipe sees that the source data hasn't changed and skips both steps. This is the core behaviour: work is only done when it needs to be.
+`BatchGenerate` still runs its generator loop and writes the same rows, but identical content keeps the same hash — so `update_ts` does not move and `BatchTransform` has no dirty keys to process. This is the core behaviour: transforms run only when inputs actually change.
 
 ## See the step list
 
@@ -112,13 +112,13 @@ This shows all steps in your pipeline and how many records are pending for each.
 
 ## What just happened
 
-- `BatchGenerate` seeds the `words` table. On the second run the same content keeps the same hash — no dirty keys.
-- `BatchTransform` only receives keys where input `update_ts` is newer than the step `process_ts` (see [Incremental Processing](../concepts/incremental-processing.md)).
+- `BatchGenerate` seeds the `words` table. On the second run it still executes, but same-hash writes leave no dirty keys for downstream work.
+- `BatchTransform` only receives keys where input `update_ts` is newer than the step `process_ts` (see [Incremental Processing](../concepts/incremental-processing.md)) — so it skips when nothing changed.
 - Try changing one word in `generate_words` and re-running: only that `word_id` recomputes in `word_lengths`.
 
 ## Next steps
 
-- **[Incremental Processing](../concepts/incremental-processing.md)** — insert / update / delete / unchanged GIFs
+- **[Incremental Processing](../concepts/incremental-processing.md)** — insert / update / delete / unchanged table panels
 - [What is Datapipe?](../concepts/what-is-datapipe.md)
 - [Pull data from external sources](../how-to/external-sources.md)
 - [Run model inference](../how-to/model-inference.md) — multi-input transforms

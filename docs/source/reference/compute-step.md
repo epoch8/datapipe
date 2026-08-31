@@ -112,7 +112,9 @@ def primary_keys(self) -> list[str]: ...
 
 ### Returns
 
-Output-side key names: keys of `keys` if set, else `dt.primary_keys`.
+Transform-side key names: **keys of the `keys` mapping** if set (not the output-table column names), else `dt.primary_keys`.
+
+Example: with `keys={"post_id": "id"}`, `primary_keys` is `["post_id"]` (transform side); the mapped output PK is `"id"`.
 
 ### `ComputeOutput.primary_schema`
 
@@ -123,7 +125,7 @@ def primary_schema(self) -> MetaSchema: ...
 
 ### Returns
 
-SQLAlchemy columns for output-side keys (aliased when `keys` is set).
+SQLAlchemy columns for transform-side keys (aliased when `keys` is set) — same naming as `primary_keys`.
 
 ### Example
 
@@ -270,8 +272,10 @@ def validate(self) -> None: ...
 
 ### Behavior notes
 
-- Computes intersection of primary keys across inputs, across outputs, then their intersection (join keys).
+- Compares **raw table** `dt.primary_keys` / `dt.primary_schema` on inputs and outputs only — **ignores** remapped `ComputeInput.keys` / `ComputeOutput.keys`.
+- Computes intersection of those table primary keys across inputs, across outputs, then their intersection (join keys).
 - No-op when there are no overlapping keys.
+- Key remaps are **not** validated here; misaligned `keys=` maps can still pass `validate()`.
 
 ---
 

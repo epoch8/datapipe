@@ -16,7 +16,7 @@ This is the fast path for propagating deletes downstream — your code never run
 empty inputs ∧ no idx param  →  None  →  delete_by_idx(outputs)  →  step_meta OK
 ```
 
-See [Soft Delete](./soft-delete.md) and the delete GIF in [Incremental Processing](./incremental-processing.md).
+See [Soft Delete](./soft-delete.md) and the delete panels in [Incremental Processing](./incremental-processing.md).
 
 ## With `idx` (explicit empty batch)
 

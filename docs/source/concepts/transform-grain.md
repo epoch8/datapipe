@@ -56,19 +56,19 @@ BatchTransform(
     infer,
     inputs=[
         "models",
-        Required("images", join_keys={"image_id": "image_id"}),
+        Required("images", keys={"image_id": "image_id"}),
     ],
     outputs=[
-        OutputSpec("predictions", output_keys={"model_id": "model_id", "image_id": "image_id"}),
+        OutputSpec("predictions", keys={"model_id": "model_id", "image_id": "image_id"}),
     ],
     transform_keys=["model_id", "image_id"],
 )
 ```
 
-- **`InputSpec` / `Required`** — how an input table attaches to transform keys (including renames).
-- **`OutputSpec`** — how batch `idx` maps to output primary keys for `processed_idx` cleanup.
+- **`InputSpec` / `Required`** — `keys={transform_col: table_col}` maps transform index columns onto the input table (including renames). `Required` also makes the input an **inner** join; bare inputs use a **full** join.
+- **`OutputSpec`** — `keys={transform_key: output_pk}` maps batch `idx` to output primary keys for `processed_idx` cleanup.
 
-Misaligned specs break joins in the scheduling SQL or disable output cleanup.
+Misaligned specs break joins in the scheduling SQL or disable output cleanup. See [`Required` / `InputSpec` / `OutputSpec`](../reference/types.md).
 
 ## Relationship to `processed_idx`
 
@@ -80,9 +80,9 @@ Transform grain = scheduling + batching. **`processed_idx`** = output cleanup sc
 |---|---|---|
 | **Implicit grain on multi-input** | Wrong keys inferred; cartesian explosion or no matches | Set `transform_keys=` explicitly |
 | **Cross product surprise** | One model change re-runs all image pairs | Expected — narrow inputs, filters, or redesign grain |
-| **`inner` vs full join on inputs** | Keys missing from one input never schedule | Understand `join_type` per input in agg CTEs |
+| **`Required` vs optional input** | Keys present in only one input never schedule (`Required`) or schedule with nulls on the missing side (optional) | Use [`Required`](../reference/types.md#required) only when every input row must exist; otherwise leave the input bare (full join). Runtime detail: [`ComputeInput.join_type`](../reference/compute-step.md#computeinput) |
 | **Child table as input without parent keys in grain** | Over- or under-scheduling | Include parent keys in `transform_keys` |
-| **Mismatched `OutputSpec` keys** | Stale output rows never deleted | Align `output_keys` with transform and output PKs |
+| **Mismatched `OutputSpec` keys** | Stale output rows never deleted | Align `keys=` with transform and output PKs |
 
 ## See also
 

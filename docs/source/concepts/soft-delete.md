@@ -25,7 +25,7 @@ Downstream `BatchTransform` steps do **not** poll the data store for missing par
 3. Step runs; `get_batch_input_dfs` returns empty frames for that key.
 4. Without an `idx` parameter, `func` is **not** called; Datapipe returns `None` and deletes B rows for that index.
 
-See the delete GIF in [Incremental Processing](./incremental-processing.md#3-delete--data-disappears).
+See the delete panels in [Incremental Processing](./incremental-processing.md#3-delete--data-disappears).
 
 ## Resurrection
 
@@ -35,7 +35,7 @@ Writing a row again under the same primary key after a soft delete is a **resurr
 - Meta: `delete_ts` cleared, `hash` recomputed, `update_ts` bumps — treated like new/changed content.
 - Downstream steps schedule again and can rebuild outputs.
 
-![Soft delete then undelete resurrects the key](../assets/incremental/06-resurrection.gif)
+![Resurrection: soft-deleted id=1 re-inserted → transform runs again](../assets/incremental/06-resurrection.png)
 
 Resurrection is the mirror of delete: meta drives scheduling even when the key was "gone" from live reads.
 

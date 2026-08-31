@@ -37,5 +37,5 @@ Most batch jobs either reprocess everything (expensive) or grow custom change-de
 
 1. [Installation](./installation.md)
 2. [Your First Pipeline](./first-pipeline.md)
-3. [Incremental Processing](../concepts/incremental-processing.md) — the four GIFs
+3. [Incremental Processing](../concepts/incremental-processing.md) — the four table-panel cases
 4. [Troubleshooting](../troubleshooting.md) — when the second run “does nothing”
