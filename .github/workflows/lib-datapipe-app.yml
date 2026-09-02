@@ -10,6 +10,9 @@ on:
       - "examples/datapipe_app/**"
       - "libs/datapipe-app/**"
       - "libs/datapipe-core/**"
+      - "libs/datapipe-ui/**"
+      - "package.json"
+      - "yarn.lock"
       - "pyproject.toml"
   pull_request:
     branches:
@@ -19,6 +22,9 @@ on:
       - "examples/datapipe_app/**"
       - "libs/datapipe-app/**"
       - "libs/datapipe-core/**"
+      - "libs/datapipe-ui/**"
+      - "package.json"
+      - "yarn.lock"
       - "pyproject.toml"
 
 jobs:
@@ -78,6 +84,7 @@ jobs:
       - name: Install dependencies with uv
         run: |
           uv pip install --system -e "libs/datapipe-core[sqlite]"
+          uv pip install --system -e "libs/datapipe-ui"
           uv pip install --system -e "libs/datapipe-app" --no-deps
           uv pip install --system "fastapi>=0.69.0" "uvicorn[standard]>=0.17.0" "click>=7.1.2" "rich>=13.3.2" "pydantic-settings>=2.0.0" "starlette-exporter" "opentelemetry-instrumentation-fastapi>=0.35b0" "httpx" "pytest<8"
 

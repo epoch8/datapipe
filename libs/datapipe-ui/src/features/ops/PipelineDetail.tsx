@@ -1,0 +1,133 @@
+import React from "react";
+import { Alert, Card, Spin, Tag } from "antd";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { opsApi, getRefreshIntervalMs } from "../../api/client";
+import { ApiErrorAlert } from "../../components/ApiErrorAlert";
+import type { PipelineDetail as PipelineDetailType } from "../../types/ops";
+import { renderPluginSections } from "../../plugins/registry";
+import { RecentRunsList } from "./components/RecentRunsList";
+import { PipelineLabelGraphOverview } from "./components/PipelineLabelGraphOverview";
+import { PageHeader } from "./shared";
+import { prependRecentRun } from "./utils/recentRuns";
+import { RunStepsDropdown } from "./components/RunStepsDropdown";
+import {
+    DEFAULT_LABEL_KEY,
+    graphHref,
+    normalizeLabelKey,
+} from "./utils/labelKey";
+
+type PipelineDetailProps = {
+    pipelineId?: string;
+    embedded?: boolean;
+};
+
+export function PipelineDetail({
+    pipelineId: pipelineIdProp,
+    embedded = false,
+}: PipelineDetailProps = {}) {
+    void embedded;
+    const { id: routeId = "" } = useParams();
+    const id = pipelineIdProp ?? routeId;
+    const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [detail, setDetail] = React.useState<PipelineDetailType | null>(null);
+    const [error, setError] = React.useState<unknown>(null);
+    const labelKeyParam = searchParams.get("label_key");
+
+    const load = React.useCallback(() => {
+        if (!id) return;
+        opsApi
+            .getPipeline(labelKeyParam ? { label_key: labelKeyParam } : undefined)
+            .then(setDetail)
+            .catch((e) => setError(e));
+    }, [id, labelKeyParam]);
+
+    React.useEffect(() => {
+        load();
+        const timer = setInterval(load, getRefreshIntervalMs());
+        return () => clearInterval(timer);
+    }, [load]);
+
+    const availableKeys = detail?.available_label_keys ?? [];
+    const labelKey = normalizeLabelKey(
+        labelKeyParam ?? detail?.label_graph?.label_key,
+        availableKeys,
+    );
+
+    const setLabelKey = (nextKey: string) => {
+        setSearchParams(
+            (prev) => {
+                const next = new URLSearchParams(prev);
+                if (nextKey === DEFAULT_LABEL_KEY) next.delete("label_key");
+                else next.set("label_key", nextKey);
+                return next;
+            },
+            { replace: true },
+        );
+    };
+
+    const runStage = (labels: [string, string][]) => {
+        opsApi
+            .startRun(labels)
+            .then((started) => {
+                setDetail((current) =>
+                    current
+                        ? {
+                              ...current,
+                              recent_runs: prependRecentRun(current.recent_runs ?? [], started),
+                          }
+                        : current,
+                );
+                navigate(`/runs/${started.run_id}`);
+            })
+            .catch((e) => setError(e));
+    };
+
+    if (!id) return <Alert type="error" message="Pipeline id is required" />;
+    if (error) return <ApiErrorAlert error={error} />;
+    if (!detail) return <Spin />;
+
+    return (
+        <div className="ops-page">
+            <PageHeader
+                breadcrumbs={[{ label: "Overview" }]}
+                title={detail.display_name ?? "Pipeline"}
+                onRefresh={load}
+                extra={
+                    <RunStepsDropdown
+                        pipelineId={id}
+                        stages={detail.stages}
+                        availableLabelKeys={availableKeys}
+                        labelGraph={detail.label_graph}
+                        defaultLabelKey={labelKey}
+                        onStart={runStage}
+                    />
+                }
+            />
+            <div style={{ marginBottom: 16 }}>
+                {detail.task_type && <Tag>{detail.task_type}</Tag>}
+                <Tag color={detail.health === "failed" ? "red" : "green"}>{detail.health}</Tag>
+            </div>
+            <PipelineLabelGraphOverview
+                stages={detail.stages}
+                stageEdges={detail.stage_edges}
+                labelGraph={detail.label_graph}
+                availableLabelKeys={availableKeys}
+                labelKey={labelKey}
+                mode="overview"
+                onLabelKeyChange={setLabelKey}
+                onLabelSelect={(label) => navigate(graphHref(label, labelKey))}
+                onStageRun={(label) => runStage([[labelKey, label]])}
+            />
+            {detail.last_error && (
+                <Card title="Error" style={{ marginBottom: 16 }}>
+                    <span style={{ color: "#ff4d4f" }}>{detail.last_error}</span>
+                </Card>
+            )}
+            {renderPluginSections({ enrichments: detail.enrichments })}
+            <Card title="Recent runs" style={{ marginTop: 16 }}>
+                <RecentRunsList runs={detail.recent_runs ?? []} />
+            </Card>
+        </div>
+    );
+}

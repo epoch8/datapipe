@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "workspaces": [
+    "libs/datapipe-ui"
+  ],
+  "packageManager": "yarn@1.22.22"
+}

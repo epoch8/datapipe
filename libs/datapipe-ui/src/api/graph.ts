@@ -1,0 +1,51 @@
+import { ApiError, apiFetch, readApiErrorBody } from "./http";
+
+const GRAPH_BASE =
+    (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
+const API_BASE = GRAPH_BASE.replace(/\/graph$/, "");
+
+async function fetchJsonOrThrow(url: string): Promise<unknown> {
+    const response = await apiFetch(url);
+    if (!response.ok) {
+        const detail = await readApiErrorBody(response);
+        throw new ApiError("http", `API error (${response.status}): ${detail}`, {
+            status: response.status,
+            url,
+        });
+    }
+    return response.json();
+}
+
+export async function fetchGraph(
+    stage?: string | null,
+    labelKey?: string | null,
+): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (stage) params.set("stage", stage);
+    if (labelKey && labelKey !== "stage") params.set("label_key", labelKey);
+    const query = params.toString();
+    const url = query ? `${GRAPH_BASE}?${query}` : GRAPH_BASE;
+    return fetchJsonOrThrow(url);
+}
+
+export async function fetchTableSize(tableName: string): Promise<number> {
+    const url = `${API_BASE}/tables/${encodeURIComponent(tableName)}/size`;
+    const data = (await fetchJsonOrThrow(url)) as { size: number };
+    return data.size;
+}
+
+export async function fetchTransformMetaSize(transformName: string): Promise<number> {
+    const url = `${API_BASE}/transforms/${encodeURIComponent(transformName)}/meta-size`;
+    const data = (await fetchJsonOrThrow(url)) as { size: number };
+    return data.size;
+}
+
+export function getDefaultTablePageSize(): number {
+    const stored = localStorage.getItem("datapipe_table_page_size");
+    const parsed = stored ? parseInt(stored, 10) : 5;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+export function setDefaultTablePageSize(size: number): void {
+    localStorage.setItem("datapipe_table_page_size", String(size));
+}
