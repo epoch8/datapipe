@@ -34,7 +34,7 @@ export function RunsPage() {
 
     const loadPipeline = React.useCallback(() => {
         if (!pipelineId) return;
-        opsApi.getPipeline(pipelineId).then(setPipeline).catch(() => undefined);
+        opsApi.getPipeline().then(setPipeline).catch(() => undefined);
     }, [pipelineId]);
 
     const loadRuns = React.useCallback(() => {
@@ -77,7 +77,7 @@ export function RunsPage() {
             .then((started) => {
                 setPipeline((current) =>
                     current
-                        ? { ...current, recent_runs: prependRecentRun(current.recent_runs, started) }
+                        ? { ...current, recent_runs: prependRecentRun(current.recent_runs ?? [], started) }
                         : current,
                 );
                 navigate(`/runs/${started.run_id}`);

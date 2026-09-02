@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { OpsShell } from "./layouts/OpsShell";
+import { Overview } from "./features/ops/Overview";
 import { Help } from "./features/ops/Help";
 import { GraphPage } from "./features/ops/GraphPage";
 import { TableDetail } from "./features/ops/TableDetail";
@@ -23,7 +24,7 @@ function App() {
         <BrowserRouter>
             <Routes>
                 <Route element={<OpsShell />}>
-                    <Route path="/" element={<Navigate to="/graph" replace />} />
+                    <Route path="/" element={<Overview />} />
                     {renderPluginRoutes()}
                     <Route path="/graph" element={<GraphPage />} />
                     <Route path="/debug" element={<LegacyDebugRedirect />} />
@@ -33,12 +34,12 @@ function App() {
                     <Route path="/transforms/:transformName" element={<TransformDetail />} />
                     <Route path="/meta-steps/:stepName" element={<MetaStepDetail />} />
                     {/* Legacy pipeline-scoped URLs from older UI builds */}
-                    <Route path="/pipelines/:id" element={<Navigate to="/graph" replace />} />
+                    <Route path="/pipelines/:id" element={<Navigate to="/" replace />} />
                     <Route path="/pipelines/:id/tables/:tableName" element={<TableDetail />} />
                     <Route path="/pipelines/:id/transforms/:transformName" element={<TransformDetail />} />
                     <Route path="/pipelines/:id/meta-steps/:stepName" element={<MetaStepDetail />} />
                 </Route>
-                <Route path="*" element={<Navigate to="/graph" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </BrowserRouter>
     );

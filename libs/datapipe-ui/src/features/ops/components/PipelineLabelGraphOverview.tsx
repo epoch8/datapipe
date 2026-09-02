@@ -17,7 +17,6 @@ import { DEFAULT_LABEL_KEY, normalizeLabelKey } from "../utils/labelKey";
 import "./PipelineLabelGraphOverview.css";
 
 export type PipelineLabelGraphOverviewProps = {
-    pipelineId: string;
     stages: StageItem[];
     stageEdges?: StageEdge[];
     labelGraph?: LabelGraphPayload;
@@ -175,7 +174,6 @@ function renderEdge(edge: LayoutEdge, level: EdgeHighlightLevel, exact: boolean)
 }
 
 export function PipelineLabelGraphOverview({
-    pipelineId,
     stages,
     stageEdges,
     labelGraph: labelGraphProp,
@@ -192,8 +190,6 @@ export function PipelineLabelGraphOverview({
     onLabelClear,
     onStageRun,
 }: PipelineLabelGraphOverviewProps) {
-    void pipelineId;
-
     const [hoveredNodeId, setHoveredNodeId] = React.useState<string | null>(null);
 
     const keys = React.useMemo(() => {

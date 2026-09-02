@@ -37,7 +37,7 @@ export function PipelineDetail({
     const load = React.useCallback(() => {
         if (!id) return;
         opsApi
-            .getPipeline(id, labelKeyParam ? { label_key: labelKeyParam } : undefined)
+            .getPipeline(labelKeyParam ? { label_key: labelKeyParam } : undefined)
             .then(setDetail)
             .catch((e) => setError(e));
     }, [id, labelKeyParam]);
@@ -72,7 +72,10 @@ export function PipelineDetail({
             .then((started) => {
                 setDetail((current) =>
                     current
-                        ? { ...current, recent_runs: prependRecentRun(current.recent_runs, started) }
+                        ? {
+                              ...current,
+                              recent_runs: prependRecentRun(current.recent_runs ?? [], started),
+                          }
                         : current,
                 );
                 navigate(`/runs/${started.run_id}`);
@@ -88,7 +91,7 @@ export function PipelineDetail({
         <div className="ops-page">
             <PageHeader
                 breadcrumbs={[{ label: "Overview" }]}
-                title={detail.display_name}
+                title={detail.display_name ?? "Pipeline"}
                 onRefresh={load}
                 extra={
                     <RunStepsDropdown
@@ -106,7 +109,6 @@ export function PipelineDetail({
                 <Tag color={detail.health === "failed" ? "red" : "green"}>{detail.health}</Tag>
             </div>
             <PipelineLabelGraphOverview
-                pipelineId={id}
                 stages={detail.stages}
                 stageEdges={detail.stage_edges}
                 labelGraph={detail.label_graph}
@@ -124,7 +126,7 @@ export function PipelineDetail({
             )}
             {renderPluginSections({ enrichments: detail.enrichments })}
             <Card title="Recent runs" style={{ marginTop: 16 }}>
-                <RecentRunsList runs={detail.recent_runs} />
+                <RecentRunsList runs={detail.recent_runs ?? []} />
             </Card>
         </div>
     );

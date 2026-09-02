@@ -178,7 +178,7 @@ export function RunDetail() {
     React.useEffect(() => {
         if (!run?.pipeline_id) return;
         opsApi
-            .getPipeline(run.pipeline_id, { label_key: labelKeyParam })
+            .getPipeline(labelKeyParam ? { label_key: labelKeyParam } : undefined)
             .then(setPipeline)
             .catch(() => setPipeline(null));
     }, [run?.pipeline_id, labelKeyParam]);
@@ -355,7 +355,6 @@ export function RunDetail() {
             {pipeline && (
                 <div style={{ marginBottom: 16 }}>
                     <PipelineLabelGraphOverview
-                        pipelineId={pipeline.pipeline_id}
                         stages={pipeline.stages}
                         stageEdges={pipeline.stage_edges}
                         labelGraph={pipeline.label_graph}

@@ -88,7 +88,7 @@ export function RunStepsDropdown({
                     setValues(valuesFromStages(stages));
                     return;
                 }
-                const detail = await opsApi.getPipeline(pipelineId, { label_key: key });
+                const detail = await opsApi.getPipeline({ label_key: key });
                 const fromGraph = valuesFromGraph(detail.label_graph);
                 setValues(
                     fromGraph.length

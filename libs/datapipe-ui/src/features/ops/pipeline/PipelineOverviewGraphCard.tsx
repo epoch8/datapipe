@@ -9,16 +9,14 @@ import {
 } from "../utils/labelKey";
 
 type Props = {
-    pipelineId: string;
     detail: PipelineDetail;
-    onStageRun?: (labels: [string, string][]) => void;
+    onLabelSelect?: (label: string, labelKey: string) => void;
     onLabelKeyChange?: (labelKey: string) => void;
 };
 
 export function PipelineOverviewGraphCard({
-    pipelineId,
     detail,
-    onStageRun,
+    onLabelSelect,
     onLabelKeyChange,
 }: Props) {
     const navigate = useNavigate();
@@ -44,7 +42,6 @@ export function PipelineOverviewGraphCard({
 
     return (
         <PipelineLabelGraphOverview
-            pipelineId={pipelineId}
             stages={detail.stages}
             stageEdges={detail.stage_edges}
             labelGraph={detail.label_graph}
@@ -52,10 +49,10 @@ export function PipelineOverviewGraphCard({
             labelKey={labelKey}
             mode="overview"
             onLabelKeyChange={setLabelKey}
-            onLabelSelect={(label) => navigate(graphHref(label, labelKey))}
-            onStageRun={
-                onStageRun ? (label) => onStageRun([[labelKey, label]]) : undefined
-            }
+            onLabelSelect={(label) => {
+                if (onLabelSelect) onLabelSelect(label, labelKey);
+                else navigate(graphHref(label, labelKey));
+            }}
         />
     );
 }

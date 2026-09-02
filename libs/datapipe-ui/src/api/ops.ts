@@ -94,14 +94,18 @@ async function notAvailable<T = never>(feature: string): Promise<T> {
 export const coreOpsApi = {
     getCapabilities: () => fetchJson<Capabilities>("/capabilities"),
     getSettings: () => fetchJson<SettingsInfo>("/settings"),
+    getPipeline: (opts?: { label_key?: string }): Promise<PipelineDetail> => {
+        const params = new URLSearchParams();
+        if (opts?.label_key) params.set("label_key", opts.label_key);
+        const query = params.toString();
+        return fetchJson<PipelineDetail>(query ? `/pipeline?${query}` : "/pipeline");
+    },
     resetTransformMetadata: (transformName: string) =>
         fetchJson<ResetTransformMetadataResponse>(
             `/transforms/${encodeURIComponent(transformName)}/reset-metadata`,
             { method: "POST" },
         ),
     // Observability endpoints exist in full Ops UI builds only; stubs keep unused pages compiling.
-    getPipeline: (_id: string, _opts?: { label_key?: string }): Promise<PipelineDetail> =>
-        notAvailable("pipelines"),
     getStageRecentRuns: (
         _pipelineId: string,
         _stage: string,

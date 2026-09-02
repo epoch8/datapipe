@@ -1,6 +1,7 @@
 import React from "react";
 import {
     ApartmentOutlined,
+    DashboardOutlined,
     QuestionCircleOutlined,
     ReloadOutlined,
     SettingOutlined,
@@ -70,7 +71,15 @@ function SidebarRefreshControl({ collapsed }: { collapsed: boolean }) {
 
 function matchNav(pathname: string, href: string): boolean {
     const hrefPath = href.split("?")[0] ?? href;
-    if (hrefPath === "/graph") return pathname.startsWith("/graph") || pathname.startsWith("/tables/") || pathname.startsWith("/transforms/") || pathname.startsWith("/meta-steps/");
+    if (hrefPath === "/") return pathname === "/";
+    if (hrefPath === "/graph") {
+        return (
+            pathname.startsWith("/graph") ||
+            pathname.startsWith("/tables/") ||
+            pathname.startsWith("/transforms/") ||
+            pathname.startsWith("/meta-steps/")
+        );
+    }
     return pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 }
 
@@ -112,6 +121,7 @@ export function OpsShell() {
         icon: <ApartmentOutlined />,
     }));
     const primaryItems: NavItem[] = [
+        { key: "/", href: "/", label: "General", icon: <DashboardOutlined /> },
         { key: "/graph", href: "/graph", label: "Graph", icon: <ApartmentOutlined /> },
         ...legacyPluginItems,
     ];
@@ -123,7 +133,7 @@ export function OpsShell() {
 
     const allItems = [...primaryItems, ...secondaryItems];
     const selected =
-        allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/graph";
+        allItems.find((item) => matchNav(location.pathname, item.href))?.key ?? "/";
 
     const isGraphRoute = location.pathname.startsWith("/graph");
     const isObsPage = getObsPagePrefixes().some((p) => location.pathname.startsWith(p));

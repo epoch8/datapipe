@@ -91,15 +91,18 @@ export type StageItem = { stage: string; status: string; steps: unknown[] };
 export type StageEdge = { from: string; to: string; count?: number };
 
 export interface PipelineDetail {
-    pipeline_id: string;
-    display_name: string;
-    task_type?: string;
-    health: string;
     stages: StageItem[];
     stage_edges?: StageEdge[];
     label_graph?: LabelGraphPayload;
     available_label_keys?: string[];
-    recent_runs: RecentRunSummary[];
+    /** @deprecated Cloud overview has no runs store. */
+    recent_runs?: RecentRunSummary[];
+    /** @deprecated Removed from cloud API. */
+    pipeline_id?: string;
+    /** @deprecated Removed from cloud API. */
+    display_name?: string;
+    task_type?: string;
+    health?: string;
     last_error?: string;
     enrichments?: Enrichment[];
 }
