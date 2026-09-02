@@ -101,6 +101,29 @@ def test_settings(app):
     assert res.status_code == 200
 
 
+def test_pipeline_overview(app):
+    client = TestClient(app)
+    res = client.get("/api/v1alpha3/pipeline")
+    assert res.status_code == 200
+    body = res.json()
+    assert "stages" in body
+    assert "label_graph" in body
+    assert "available_label_keys" in body
+    assert "pipeline_id" not in body
+
+
+def test_graph_includes_schema_and_stages(app):
+    client = TestClient(app)
+    res = client.get("/api/v1alpha3/graph")
+    assert res.status_code == 200
+    body = res.json()
+    assert "stages" in body
+    assert body["catalog"]
+    first_table = next(iter(body["catalog"].values()))
+    assert "schema" in first_table
+    assert first_table["size"] is None
+
+
 def test_table_size(test_client: TestClient):
     res = test_client.get("/api/v1alpha3/tables/events/size")
     assert res.status_code == 200
