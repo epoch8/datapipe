@@ -17,3 +17,6 @@ poetry.lock
 uv.lock
 *.pt
 *.sqlite
+# Node (datapipe-ui yarn workspaces)
+node_modules/
+libs/datapipe-ui/build/

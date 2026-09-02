@@ -1,23 +1,18 @@
 # datapipe-app
 
-`datapipe-app` implements two aspects to make every [datapipe](https://github.com/epoch8/datapipe) pipeline to work as
-an application.
+REST API and CLI extensions for Datapipe pipelines. The Ops UI lives in a separate
+package: [`datapipe-ui`](../datapipe-ui).
 
 From the monorepo root:
 
 ```bash
-uv sync --package datapipe-app --package datapipe-core --extra sqlite
+uv sync --package datapipe-app --package datapipe-core --package datapipe-ui --extra sqlite
 uv run pytest libs/datapipe-app/tests
 ```
 
-1. REST API + debug UI based of FastAPI
-1. `datapipe` CLI tool
-
 ## Common usage
 
-Common pattern to use `datapipe-app` is to create `app.py` with the following code:
-
-```
+```python
 from datapipe_app import DatapipeApp
 
 from pipeline import ds, catalog, pipeline
@@ -25,22 +20,25 @@ from pipeline import ds, catalog, pipeline
 app = DatapipeApp(ds, catalog, pipeline)
 ```
 
-Where `pipeline` is a module that defines common elements: `ds`, `catalog` and
-`pipeline`.
-
 ## REST API + UI
 
-`DatapipeApp` inherits from `FastApi` app and can be started with datapipe CLI
-or directly with server like `uvicorn`.
+```bash
+# API only
+uv sync --package datapipe-app --package datapipe-core
 
+# API + Ops UI static assets
+uv sync --package datapipe-app --package datapipe-ui --extra ui
+# or: pip install 'datapipe-app[ui]'
 ```
+
+```bash
 datapipe --pipeline app:app api
 ```
 
-### UI
+Ops API docs: `/api/v1alpha3/docs` (also `/api/v1alpha1/docs`, `/api/v1alpha2/docs`).
 
-![Datapipe App UI](docs/datapipe-example-app.png)
+Build the UI package before packaging wheels:
 
-### REST API
-
-API documentation can be found at `/api/v1alpha1/docs` sub URL.
+```bash
+make -C libs/datapipe-ui build-package
+```

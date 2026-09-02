@@ -1,7 +1,7 @@
 [project]
 name = "datapipe-app"
 version = "0.5.4"
-description = "REST API, debug UI, and CLI extensions for Datapipe pipelines"
+description = "REST API and CLI extensions for Datapipe pipelines"
 authors = [{ name = "Andrey Tatarinov", email = "a@tatarinov.co" }]
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 gcp = ["opentelemetry-exporter-gcp-trace>=1.3.0,<2"]
 jaeger = ["opentelemetry-exporter-jaeger>=1.8.0,<2"]
+ui = ["datapipe-ui"]
 
 [project.entry-points."datapipe.cli"]
 datapipe_app = "datapipe_app.cli:register_commands"
@@ -35,22 +36,18 @@ dev = [
     "mypy",
     "pytest<8",
     "sqlalchemy",
+    "datapipe-ui",
 ]
 
 [tool.uv.sources]
 datapipe-core = { workspace = true }
+datapipe-ui = { workspace = true }
 
 [tool.hatch.build.targets.sdist]
-exclude = ["tests", "frontend"]
-
-[tool.hatch.build.targets.sdist.force-include]
-"datapipe_app/frontend" = "datapipe_app/frontend"
+exclude = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-exclude = ["tests", "frontend"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"datapipe_app/frontend" = "datapipe_app/frontend"
+exclude = ["tests"]
 
 [build-system]
 requires = ["hatchling"]
