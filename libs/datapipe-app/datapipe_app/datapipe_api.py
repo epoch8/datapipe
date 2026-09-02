@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 import datapipe_app.api_v1alpha1 as api_v1alpha1
 import datapipe_app.api_v1alpha2 as api_v1alpha2
+import datapipe_app.api_v1alpha3 as api_v1alpha3
 from datapipe_app.metrics import setup_prometheus_metrics
 
 
@@ -61,6 +62,12 @@ class DatapipeAPI(FastAPI, DatapipeApp):
             "/v1alpha2",
             api_v1alpha2.make_app(self.ds, self.catalog, self.pipeline, self.steps),
             name="v1alpha2",
+        )
+
+        self.api.mount(
+            "/v1alpha3",
+            api_v1alpha3.make_app(self.ds, self.catalog, self.pipeline, self.steps),
+            name="v1alpha3",
         )
 
         self.mount("/api", self.api, name="api")
