@@ -20,7 +20,6 @@ import { initInternalEdgeOverlay, refreshInternalEdgeOverlay } from "./internalE
 import { initSnakeRowOverlay, refreshSnakeRowOverlay } from "./snakeRowOverlay";
 import {
     applyFailedEdgeStyles,
-    clearSelectedNodeIds,
     initHtmlLabelInteractionStateSync,
     setGraphLabelFocus,
     setSelectedNodeIds,

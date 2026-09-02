@@ -95,14 +95,6 @@ export function pinLayoutAnchorCenter(
     });
 }
 
-function topCenter(bbox: BBox): { x: number; y: number } {
-    return { x: bbox.x + bbox.w / 2, y: bbox.y };
-}
-
-function placeByTopCenter(anchor: { x: number; y: number }, size: { w: number; h: number }): BBox {
-    return { x: anchor.x - size.w / 2, y: anchor.y, w: size.w, h: size.h };
-}
-
 function bboxesOverlap(a: BBox, b: BBox): boolean {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
@@ -810,6 +802,7 @@ function placeLayeredLrWrapped(
         for (let bi = rowStart; bi < rowEnd; bi += 1) placeOrder.push(bi);
         if (rtl) placeOrder.reverse();
 
+        const rowTop = yRow;
         placeOrder.forEach((bi, orderIndex) => {
             const rankKeys = blocks[bi];
             // RTL rows: mirror in→step→out so snake R→L still reads inputs first.
@@ -819,7 +812,7 @@ function placeLayeredLrWrapped(
                 const rankIds = orderedRanks.get(r) ?? [];
                 const colW = rankColumnWidth(rankIds, nodes);
                 const colH = rankColumnHeight(rankIds, nodes);
-                let yCursor = yRow + (rowHeight - colH) / 2;
+                let yCursor = rowTop + (rowHeight - colH) / 2;
                 rankIds.forEach((id, index) => {
                     const node = nodes.get(id);
                     if (!node) return;
@@ -2011,15 +2004,6 @@ const pendingMorphStore = new WeakMap<
     >
 >();
 
-function trackMorphRaf(cy: Cytoscape.Core, nodeId: string, id: number): void {
-    let map = morphRafStore.get(cy);
-    if (!map) {
-        map = new Map();
-        morphRafStore.set(cy, map);
-    }
-    map.set(nodeId, id);
-}
-
 function getPendingMorphs(cy: Cytoscape.Core) {
     let map = pendingMorphStore.get(cy);
     if (!map) {
@@ -2409,7 +2393,6 @@ export function animateLayoutTransition(
         };
 
         if (morph && target) {
-            const shrinking = morph.to.w * morph.to.h < morph.from.w * morph.from.h;
             const isNativeGroupFrame = nodeEl.data("type") === "group-expanded";
             animateNodeBoxMorph(
                 cy,
