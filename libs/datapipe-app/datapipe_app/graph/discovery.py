@@ -112,7 +112,7 @@ def build_stage_edges(steps: list[ComputeStep]) -> list[models.StageEdge]:
                             edge_counts[(src, dst)] += 1
 
     return [
-        models.StageEdge(**{"from": src, "to": dst, "count": count})
+        models.StageEdge.model_validate({"from": src, "to": dst, "count": count})
         for (src, dst), count in edge_counts.items()
     ]
 
