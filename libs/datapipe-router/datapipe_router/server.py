@@ -1,6 +1,5 @@
 import asyncio
 import grpc
-import pandas as pd
 import uuid
 import logging
 
@@ -267,12 +266,12 @@ class ServerServicer(
                 return response.data
             
             except asyncio.TimeoutError:
-                return client_messages.GetDataResponse(data=pd.DataFrame().to_parquet())
+                return client_messages.GetDataResponse(data=None)
             
             finally:
                 await self.data_router.finish_route(route_id)
 
-        return client_messages.GetDataResponse(data=pd.DataFrame().to_parquet())
+        return client_messages.GetDataResponse(data=None)
 
     async def GetGraph(self, request, context):
         if self.agents.has_connection(request.agent_id):
