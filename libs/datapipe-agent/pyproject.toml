@@ -1,0 +1,25 @@
+[project]
+name = "datapipe-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datapipe-core",
+    "datapipe-router",
+    "grpcio>=1.83.0",
+    "pandas>=2.3.3",
+    "pyarrow>=25.0.1",
+    "click>=8.1.8",
+]
+
+[tool.uv.sources]
+datapipe-core = { workspace = true }
+datapipe-router = { workspace = true }
+
+[project.entry-points."datapipe.cli"]
+datapipe_agent = "datapipe_agent.cli:register_commands"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

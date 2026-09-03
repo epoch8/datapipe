@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package datapipe;
+
+import "client.proto";
+
+service DatapipeService {
+  rpc GetStreamServerEvents(ServerEventsRequest) returns (stream ServerEventsResponse);
+  rpc SendData(SendDataRequest) returns (SendDataResponse);
+  rpc SendGraph(SendGraphRequest) returns (SendGraphResponse);
+  rpc SendLogs(SendLogsRequest) returns (SendLogsResponse);
+  rpc SendRunStatus(SendRunStatusRequest) returns (SendRunStatusResponse);
+  rpc SendPing(PingRequest) returns (PingResponse);
+}
+
+message ServerEventsRequest {
+    string name = 1;
+}
+
+message DataEvent {
+  string route_id = 1;
+  GetDataRequest request = 2;
+}
+
+message RunEvent {
+  string run_id = 1;
+}
+
+message GraphEvent {
+  string route_id = 1;
+  string label_key = 2;
+  string value = 3;
+}
+
+message ServerEventsResponse {
+  string request_id = 1;
+  oneof event {
+    DataEvent data_event = 2;
+    RunEvent run_event = 3;
+    GraphEvent graph_event = 4;
+  }
+}
+
+message SendDataRequest{
+  string route_id = 1;
+  GetDataResponse data = 2;
+}
+
+message SendDataResponse{
+  string status = 1;
+}
+
+message SendLogsRequest{
+  string run_id = 1;
+  string log = 2;
+}
+
+message SendLogsResponse{
+  string state = 1;
+}
+
+message SendRunStatusRequest{
+  string run_id = 1;
+  string status = 2;
+}
+
+message SendRunStatusResponse{
+  string state = 1;
+}
+
+message PingRequest {
+  string name = 1;
+}
+
+message PingResponse {
+  string status = 1;
+  string message = 2;
+}
+
+message SendGraphRequest {
+  string route_id = 1;
+  GetGraphResponse data = 2;
+}
+
+message SendGraphResponse {
+  string status = 1;
+}

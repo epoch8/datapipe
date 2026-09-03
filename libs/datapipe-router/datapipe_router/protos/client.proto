@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package datapipe;
+
+
+service ClientService {
+  rpc GetData(GetDataRequest) returns (GetDataResponse);
+  rpc GetAgents(GetAgentsRequest) returns (GetAgentsResponse);
+  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+  rpc GetRunList(GetRunListRequest) returns (GetRunListResponse);
+  rpc GetRunLogs(GetRunLogsRequest) returns (GetRunLogsResponse);
+  rpc GetRunLogsStream(GetRunLogsStreamRequest) returns (stream GetRunLogsStreamResponse);
+  rpc GetGraph(GetGraphRequest) returns (GetGraphResponse);
+}
+
+message GetDataRequest {
+    string agent_id = 1;
+    string table = 2;
+    int64 page = 3;
+    int64 page_size = 4;
+    string order = 5;
+    bool include_total = 6;
+    optional string order_by = 7;
+    bytes filters = 8;
+    repeated bytes focus = 9;
+}
+
+message GetDataResponse {
+    int64 page = 1;
+    int64 page_size = 2;
+    bytes data = 3;
+    optional int64 total = 4;
+}
+
+message GetAgentsRequest {
+
+}
+
+message GetAgentsResponse {
+    repeated string agents = 1;
+}
+
+message RunPipelineRequest {
+    string agent_id = 1; 
+}
+
+message RunPipelineResponse {
+    string run_id = 1; 
+}
+
+message GetRunListRequest {
+
+}
+
+message RunInfo {
+    string run_id = 1;
+    string agent_id = 2;
+    string status = 3;
+}
+
+message GetRunListResponse{
+    repeated RunInfo runs = 1;
+}
+
+message GetRunLogsRequest {
+    string run_id = 1;
+}
+
+message GetRunLogsResponse {
+    repeated string logs = 1;
+}
+
+message GetRunLogsStreamRequest {
+    string run_id = 1;
+}
+
+message GetRunLogsStreamResponse {
+    repeated string logs = 1;
+}
+
+message GetGraphRequest {
+    string agent_id = 1;
+    string label_key = 2;
+    string value = 3;
+}
+
+message TableColumn {
+    string name = 1;
+    string type = 2;
+}
+
+message TableDetails {
+    string name = 1;
+    string store_class = 2;
+    repeated string indexes = 3;
+    repeated TableColumn schema = 4;
+    optional int64 size = 5;
+}
+
+message LabelsItem {
+    repeated string item = 1;
+}
+
+message PipelineStepDetail {
+    string name = 1;
+    string type = 2;
+    string transform_type = 3;
+    repeated string inputs = 4;
+    repeated string outputs = 5;
+    repeated LabelsItem labels = 6;
+    bool has_transform_meta = 7;
+    repeated string indexes = 8;
+    optional int64 total_idx_count = 9;
+    optional int64 changed_idx_count = 10;
+}
+
+message MetaStepDetail {
+    string name = 1;
+    string type = 2;
+    string transform_type = 3;
+    repeated string inputs = 4;
+    repeated string outputs = 5;
+    repeated LabelsItem labels = 6;
+    GetGraphResponse graph = 7;
+}
+
+message PipelineNodeDetails {
+    oneof details {
+        PipelineStepDetail pipeline_step = 1;
+        MetaStepDetail meta_step = 2;
+    }
+}
+
+message GetGraphResponse {
+    map<string, TableDetails> catalog = 1;
+    repeated PipelineNodeDetails pipeline = 2;
+    repeated string stages = 3;
+}
