@@ -13,7 +13,8 @@ dependencies = [
     "grpcio-tools>=1.81.1",
     "pyarrow>=25.0.1",
     "click>=8.1.8",
-    "sqlalchemy>=2.0.52"
+    "sqlalchemy>=2.0.52",
+    "protobuf>=6.33.6",
 ]
 
 [build-system]

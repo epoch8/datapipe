@@ -11,10 +11,11 @@ from datapipe_router.types import Graph, DataFilter, TableData
 
 
 CHANNEL_OPTIONS = [
-    ('grpc.keepalive_time_ms', 30000),             # Send pings every 30 seconds if idle
-    ('grpc.keepalive_timeout_ms', 10000),          # Wait 10 seconds for ping response
-    ('grpc.keepalive_permit_without_calls', 1),    # Allow pings even if there are no active streams
-    ('grpc.http2.max_pings_without_data', 0),      # Unlimited pings without sending data
+    ('grpc.keepalive_time_ms', 30000),               # Send pings every 30 seconds if idle
+    ('grpc.keepalive_timeout_ms', 10000),            # Wait 10 seconds for ping response
+    ('grpc.keepalive_permit_without_calls', 1),      # Allow pings even if there are no active streams
+    ('grpc.http2.max_pings_without_data', 0),        # Unlimited pings without sending data
+    ("grpc.http2.min_time_between_pings_ms", 10000), # Enforce minimum time between pings to remain gentle on the proxy
 ]
 
 
