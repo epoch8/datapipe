@@ -39,7 +39,7 @@ class RUN_STATUSES(Enum):
     FAILED = "Failed"
     CANCELED = "Canceled"
 
-logger = logging.getLogger("datapipe_cloud.server")
+logger = logging.getLogger("datapipe_router.server")
 
 
 class AgentConnection:
@@ -394,8 +394,21 @@ class DatapipeServer:
         self.server.add_insecure_port(f'{self.address}:{self.port}')
         
         await self.server.start()
-        await self.server.wait_for_termination()
+
+        try:
+            await self.server.wait_for_termination()
+        except asyncio.CancelledError:
+            logger.info("Server task was cancelled, shutting down gracefully...")
+            # Grace period of 0 seconds or higher
+            try:
+                await self.server.stop(grace=5)
+            except asyncio.CancelledError:
+                logger.warning("Server stop cancelled,")
 
 
 if __name__ == '__main__':
     asyncio.run(DatapipeServer().run_server())
+
+
+
+    

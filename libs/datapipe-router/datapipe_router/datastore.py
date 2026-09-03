@@ -55,13 +55,6 @@ class DBConn:
                 # pool_size=25,
             )
 
-    #         listen(self.con, "connect", self.set_schema)
-
-    # def set_schema(self, dbapi_connection, connection_record):
-    #     print("CONNECT")
-    #     with dbapi_connection.cursor() as cursor:
-    #         cursor.execute("SET search_path TO :schema", {"schema": self.schema})
-
     def __reduce__(self) -> tuple[Any, ...]:
         return self.__class__, (
             self.connstr,
@@ -78,10 +71,6 @@ class DBConn:
 
     def __setstate__(self, state):
         self._init(state["connstr"], state["schema"], state["create_engine_kwargs"])
-
-
-
-
 
 
 class PipelineRun:
