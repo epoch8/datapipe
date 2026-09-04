@@ -26,7 +26,7 @@ class GetDataRequest(_message.Message):
     order_by: str
     filters: bytes
     focus: _containers.RepeatedScalarFieldContainer[bytes]
-    def __init__(self, agent_id: _Optional[str] = ..., table: _Optional[str] = ..., page: _Optional[int] = ..., page_size: _Optional[int] = ..., order: _Optional[str] = ..., include_total: _Optional[bool] = ..., order_by: _Optional[str] = ..., filters: _Optional[bytes] = ..., focus: _Optional[_Iterable[bytes]] = ...) -> None: ...
+    def __init__(self, agent_id: _Optional[str] = ..., table: _Optional[str] = ..., page: _Optional[int] = ..., page_size: _Optional[int] = ..., order: _Optional[str] = ..., include_total: bool = ..., order_by: _Optional[str] = ..., filters: _Optional[bytes] = ..., focus: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
 class GetDataResponse(_message.Message):
     __slots__ = ("page", "page_size", "data", "total")
@@ -166,7 +166,7 @@ class PipelineStepDetail(_message.Message):
     indexes: _containers.RepeatedScalarFieldContainer[str]
     total_idx_count: int
     changed_idx_count: int
-    def __init__(self, name: _Optional[str] = ..., type: _Optional[str] = ..., transform_type: _Optional[str] = ..., inputs: _Optional[_Iterable[str]] = ..., outputs: _Optional[_Iterable[str]] = ..., labels: _Optional[_Iterable[_Union[LabelsItem, _Mapping]]] = ..., has_transform_meta: _Optional[bool] = ..., indexes: _Optional[_Iterable[str]] = ..., total_idx_count: _Optional[int] = ..., changed_idx_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., type: _Optional[str] = ..., transform_type: _Optional[str] = ..., inputs: _Optional[_Iterable[str]] = ..., outputs: _Optional[_Iterable[str]] = ..., labels: _Optional[_Iterable[_Union[LabelsItem, _Mapping]]] = ..., has_transform_meta: bool = ..., indexes: _Optional[_Iterable[str]] = ..., total_idx_count: _Optional[int] = ..., changed_idx_count: _Optional[int] = ...) -> None: ...
 
 class MetaStepDetail(_message.Message):
     __slots__ = ("name", "type", "transform_type", "inputs", "outputs", "labels", "graph")

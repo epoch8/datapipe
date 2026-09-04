@@ -5,7 +5,7 @@ import warnings
 
 import agent_pb2 as agent__pb2
 
-GRPC_GENERATED_VERSION = '1.83.0'
+GRPC_GENERATED_VERSION = '1.73.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in agent_pb2_grpc.py depends on'
+        + f' but the generated code in agent_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class DatapipeServiceStub:
+class DatapipeServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -66,7 +66,7 @@ class DatapipeServiceStub:
                 _registered_method=True)
 
 
-class DatapipeServiceServicer:
+class DatapipeServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def GetStreamServerEvents(self, request, context):
@@ -146,7 +146,7 @@ def add_DatapipeServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class DatapipeService:
+class DatapipeService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
