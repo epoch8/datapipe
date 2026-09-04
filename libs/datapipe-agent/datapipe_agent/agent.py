@@ -146,9 +146,12 @@ class DatapipeAgent(DatapipeApp):
 
 
     async def process_command(self, command: agent_messages.ServerEventsResponse):
-        logger.info(f"Received server command [{command.request_id}]")
-
         active_field = command.WhichOneof("event")
+
+        if active_field == "ping_event":
+            return
+
+        logger.info(f"Received server command [{command.request_id}]")
 
         if active_field == "data_event":
             asyncio.create_task(self.send_data(command.request_id, command.data_event))

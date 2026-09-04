@@ -26,6 +26,10 @@ class RunEvent(_message.Message):
     run_id: str
     def __init__(self, run_id: _Optional[str] = ...) -> None: ...
 
+class PingEvent(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class GraphEvent(_message.Message):
     __slots__ = ("route_id", "label_key", "value")
     ROUTE_ID_FIELD_NUMBER: _ClassVar[int]
@@ -37,16 +41,18 @@ class GraphEvent(_message.Message):
     def __init__(self, route_id: _Optional[str] = ..., label_key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
 
 class ServerEventsResponse(_message.Message):
-    __slots__ = ("request_id", "data_event", "run_event", "graph_event")
+    __slots__ = ("request_id", "data_event", "run_event", "graph_event", "ping_event")
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     DATA_EVENT_FIELD_NUMBER: _ClassVar[int]
     RUN_EVENT_FIELD_NUMBER: _ClassVar[int]
     GRAPH_EVENT_FIELD_NUMBER: _ClassVar[int]
+    PING_EVENT_FIELD_NUMBER: _ClassVar[int]
     request_id: str
     data_event: DataEvent
     run_event: RunEvent
     graph_event: GraphEvent
-    def __init__(self, request_id: _Optional[str] = ..., data_event: _Optional[_Union[DataEvent, _Mapping]] = ..., run_event: _Optional[_Union[RunEvent, _Mapping]] = ..., graph_event: _Optional[_Union[GraphEvent, _Mapping]] = ...) -> None: ...
+    ping_event: PingEvent
+    def __init__(self, request_id: _Optional[str] = ..., data_event: _Optional[_Union[DataEvent, _Mapping]] = ..., run_event: _Optional[_Union[RunEvent, _Mapping]] = ..., graph_event: _Optional[_Union[GraphEvent, _Mapping]] = ..., ping_event: _Optional[_Union[PingEvent, _Mapping]] = ...) -> None: ...
 
 class SendDataRequest(_message.Message):
     __slots__ = ("route_id", "data")

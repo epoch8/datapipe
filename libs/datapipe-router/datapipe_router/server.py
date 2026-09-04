@@ -28,6 +28,7 @@ SERVER_OPTIONS = [
     ('grpc.http2.max_ping_strikes', 0) 
 ]
 
+STREAM_PING_DELAY = 10
 GED_DATA_TIMEOUT = 5
 
 class RUN_STATUSES(Enum):
@@ -84,6 +85,18 @@ class AgentsPool:
     async def remove_agent(self, agent_id: str):
         if agent_id in self.connections:
             del self.connections[agent_id]
+
+    async def run_agent_ping_sender(self):
+        while True:
+            for _, conn in self.connections.items():
+                await conn.send_event(
+                    agent_messages.ServerEventsResponse(
+                        request_id=str(uuid.uuid4()),
+                        ping_event=agent_messages.PingEvent()
+                    )
+                )
+
+            await asyncio.sleep(STREAM_PING_DELAY)
         
 
 class RunCache:
@@ -206,6 +219,9 @@ class ServerServicer(
         self.agents = AgentsPool()
         self.runs_cache = RunsCache() 
         self.store = store
+
+    async def init(self):
+        asyncio.create_task(self.agents.run_agent_ping_sender()) 
         
     async def GetStreamServerEvents(self, request, context):
         try:
@@ -391,9 +407,10 @@ class DatapipeServer:
         client_messages_grpc.add_ClientServiceServicer_to_server(self.servicer, self.server)
                 
         self.server.add_insecure_port(f'{self.address}:{self.port}')
-        
-        await self.server.start()
 
+        await self.servicer.init()
+        await self.server.start()
+        
         try:
             await self.server.wait_for_termination()
         except asyncio.CancelledError:

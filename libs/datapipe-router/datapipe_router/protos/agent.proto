@@ -26,6 +26,10 @@ message RunEvent {
   string run_id = 1;
 }
 
+message PingEvent {
+
+}
+
 message GraphEvent {
   string route_id = 1;
   string label_key = 2;
@@ -38,6 +42,7 @@ message ServerEventsResponse {
     DataEvent data_event = 2;
     RunEvent run_event = 3;
     GraphEvent graph_event = 4;
+    PingEvent ping_event = 5;
   }
 }
 

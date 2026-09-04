@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 import client_pb2 as client__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x61gent.proto\x12\x08\x64\x61tapipe\x1a\x0c\x63lient.proto\"#\n\x13ServerEventsRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"H\n\tDataEvent\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12)\n\x07request\x18\x02 \x01(\x0b\x32\x18.datapipe.GetDataRequest\"\x1a\n\x08RunEvent\x12\x0e\n\x06run_id\x18\x01 \x01(\t\"@\n\nGraphEvent\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12\x11\n\tlabel_key\x18\x02 \x01(\t\x12\r\n\x05value\x18\x03 \x01(\t\"\xb4\x01\n\x14ServerEventsResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12)\n\ndata_event\x18\x02 \x01(\x0b\x32\x13.datapipe.DataEventH\x00\x12\'\n\trun_event\x18\x03 \x01(\x0b\x32\x12.datapipe.RunEventH\x00\x12+\n\x0bgraph_event\x18\x04 \x01(\x0b\x32\x14.datapipe.GraphEventH\x00\x42\x07\n\x05\x65vent\"L\n\x0fSendDataRequest\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12\'\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x19.datapipe.GetDataResponse\"\"\n\x10SendDataResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\".\n\x0fSendLogsRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\x12\x0b\n\x03log\x18\x02 \x01(\t\"!\n\x10SendLogsResponse\x12\r\n\x05state\x18\x01 \x01(\t\"6\n\x14SendRunStatusRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\"&\n\x15SendRunStatusResponse\x12\r\n\x05state\x18\x01 \x01(\t\"\x1b\n\x0bPingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"/\n\x0cPingResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"N\n\x10SendGraphRequest\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12(\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x1a.datapipe.GetGraphResponse\"#\n\x11SendGraphResponse\x12\x0e\n\x06status\x18\x01 \x01(\t2\xc4\x03\n\x0f\x44\x61tapipeService\x12X\n\x15GetStreamServerEvents\x12\x1d.datapipe.ServerEventsRequest\x1a\x1e.datapipe.ServerEventsResponse0\x01\x12\x41\n\x08SendData\x12\x19.datapipe.SendDataRequest\x1a\x1a.datapipe.SendDataResponse\x12\x44\n\tSendGraph\x12\x1a.datapipe.SendGraphRequest\x1a\x1b.datapipe.SendGraphResponse\x12\x41\n\x08SendLogs\x12\x19.datapipe.SendLogsRequest\x1a\x1a.datapipe.SendLogsResponse\x12P\n\rSendRunStatus\x12\x1e.datapipe.SendRunStatusRequest\x1a\x1f.datapipe.SendRunStatusResponse\x12\x39\n\x08SendPing\x12\x15.datapipe.PingRequest\x1a\x16.datapipe.PingResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0b\x61gent.proto\x12\x08\x64\x61tapipe\x1a\x0c\x63lient.proto\"#\n\x13ServerEventsRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"H\n\tDataEvent\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12)\n\x07request\x18\x02 \x01(\x0b\x32\x18.datapipe.GetDataRequest\"\x1a\n\x08RunEvent\x12\x0e\n\x06run_id\x18\x01 \x01(\t\"\x0b\n\tPingEvent\"@\n\nGraphEvent\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12\x11\n\tlabel_key\x18\x02 \x01(\t\x12\r\n\x05value\x18\x03 \x01(\t\"\xdf\x01\n\x14ServerEventsResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12)\n\ndata_event\x18\x02 \x01(\x0b\x32\x13.datapipe.DataEventH\x00\x12\'\n\trun_event\x18\x03 \x01(\x0b\x32\x12.datapipe.RunEventH\x00\x12+\n\x0bgraph_event\x18\x04 \x01(\x0b\x32\x14.datapipe.GraphEventH\x00\x12)\n\nping_event\x18\x05 \x01(\x0b\x32\x13.datapipe.PingEventH\x00\x42\x07\n\x05\x65vent\"L\n\x0fSendDataRequest\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12\'\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x19.datapipe.GetDataResponse\"\"\n\x10SendDataResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\".\n\x0fSendLogsRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\x12\x0b\n\x03log\x18\x02 \x01(\t\"!\n\x10SendLogsResponse\x12\r\n\x05state\x18\x01 \x01(\t\"6\n\x14SendRunStatusRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\x12\x0e\n\x06status\x18\x02 \x01(\t\"&\n\x15SendRunStatusResponse\x12\r\n\x05state\x18\x01 \x01(\t\"\x1b\n\x0bPingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"/\n\x0cPingResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\"N\n\x10SendGraphRequest\x12\x10\n\x08route_id\x18\x01 \x01(\t\x12(\n\x04\x64\x61ta\x18\x02 \x01(\x0b\x32\x1a.datapipe.GetGraphResponse\"#\n\x11SendGraphResponse\x12\x0e\n\x06status\x18\x01 \x01(\t2\xc4\x03\n\x0f\x44\x61tapipeService\x12X\n\x15GetStreamServerEvents\x12\x1d.datapipe.ServerEventsRequest\x1a\x1e.datapipe.ServerEventsResponse0\x01\x12\x41\n\x08SendData\x12\x19.datapipe.SendDataRequest\x1a\x1a.datapipe.SendDataResponse\x12\x44\n\tSendGraph\x12\x1a.datapipe.SendGraphRequest\x1a\x1b.datapipe.SendGraphResponse\x12\x41\n\x08SendLogs\x12\x19.datapipe.SendLogsRequest\x1a\x1a.datapipe.SendLogsResponse\x12P\n\rSendRunStatus\x12\x1e.datapipe.SendRunStatusRequest\x1a\x1f.datapipe.SendRunStatusResponse\x12\x39\n\x08SendPing\x12\x15.datapipe.PingRequest\x1a\x16.datapipe.PingResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,30 +38,32 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_DATAEVENT']._serialized_end=148
   _globals['_RUNEVENT']._serialized_start=150
   _globals['_RUNEVENT']._serialized_end=176
-  _globals['_GRAPHEVENT']._serialized_start=178
-  _globals['_GRAPHEVENT']._serialized_end=242
-  _globals['_SERVEREVENTSRESPONSE']._serialized_start=245
-  _globals['_SERVEREVENTSRESPONSE']._serialized_end=425
-  _globals['_SENDDATAREQUEST']._serialized_start=427
-  _globals['_SENDDATAREQUEST']._serialized_end=503
-  _globals['_SENDDATARESPONSE']._serialized_start=505
-  _globals['_SENDDATARESPONSE']._serialized_end=539
-  _globals['_SENDLOGSREQUEST']._serialized_start=541
-  _globals['_SENDLOGSREQUEST']._serialized_end=587
-  _globals['_SENDLOGSRESPONSE']._serialized_start=589
-  _globals['_SENDLOGSRESPONSE']._serialized_end=622
-  _globals['_SENDRUNSTATUSREQUEST']._serialized_start=624
-  _globals['_SENDRUNSTATUSREQUEST']._serialized_end=678
-  _globals['_SENDRUNSTATUSRESPONSE']._serialized_start=680
-  _globals['_SENDRUNSTATUSRESPONSE']._serialized_end=718
-  _globals['_PINGREQUEST']._serialized_start=720
-  _globals['_PINGREQUEST']._serialized_end=747
-  _globals['_PINGRESPONSE']._serialized_start=749
-  _globals['_PINGRESPONSE']._serialized_end=796
-  _globals['_SENDGRAPHREQUEST']._serialized_start=798
-  _globals['_SENDGRAPHREQUEST']._serialized_end=876
-  _globals['_SENDGRAPHRESPONSE']._serialized_start=878
-  _globals['_SENDGRAPHRESPONSE']._serialized_end=913
-  _globals['_DATAPIPESERVICE']._serialized_start=916
-  _globals['_DATAPIPESERVICE']._serialized_end=1368
+  _globals['_PINGEVENT']._serialized_start=178
+  _globals['_PINGEVENT']._serialized_end=189
+  _globals['_GRAPHEVENT']._serialized_start=191
+  _globals['_GRAPHEVENT']._serialized_end=255
+  _globals['_SERVEREVENTSRESPONSE']._serialized_start=258
+  _globals['_SERVEREVENTSRESPONSE']._serialized_end=481
+  _globals['_SENDDATAREQUEST']._serialized_start=483
+  _globals['_SENDDATAREQUEST']._serialized_end=559
+  _globals['_SENDDATARESPONSE']._serialized_start=561
+  _globals['_SENDDATARESPONSE']._serialized_end=595
+  _globals['_SENDLOGSREQUEST']._serialized_start=597
+  _globals['_SENDLOGSREQUEST']._serialized_end=643
+  _globals['_SENDLOGSRESPONSE']._serialized_start=645
+  _globals['_SENDLOGSRESPONSE']._serialized_end=678
+  _globals['_SENDRUNSTATUSREQUEST']._serialized_start=680
+  _globals['_SENDRUNSTATUSREQUEST']._serialized_end=734
+  _globals['_SENDRUNSTATUSRESPONSE']._serialized_start=736
+  _globals['_SENDRUNSTATUSRESPONSE']._serialized_end=774
+  _globals['_PINGREQUEST']._serialized_start=776
+  _globals['_PINGREQUEST']._serialized_end=803
+  _globals['_PINGRESPONSE']._serialized_start=805
+  _globals['_PINGRESPONSE']._serialized_end=852
+  _globals['_SENDGRAPHREQUEST']._serialized_start=854
+  _globals['_SENDGRAPHREQUEST']._serialized_end=932
+  _globals['_SENDGRAPHRESPONSE']._serialized_start=934
+  _globals['_SENDGRAPHRESPONSE']._serialized_end=969
+  _globals['_DATAPIPESERVICE']._serialized_start=972
+  _globals['_DATAPIPESERVICE']._serialized_end=1424
 # @@protoc_insertion_point(module_scope)
