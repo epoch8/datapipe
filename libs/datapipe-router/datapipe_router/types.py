@@ -114,7 +114,6 @@ class PipelineStepNode(PipelineNode):
             )
         )
 
-
 @dataclass
 class MetaPipelineStepNode(PipelineNode):
     graph: "Graph"
@@ -161,7 +160,7 @@ class Graph:
             pipeline.append(
                 PipelineStepNode.from_message(node.pipeline_step)
                 if active_field == "pipeline_step" 
-                else MetaPipelineStepNode.from_message(node.pipeline_step)
+                else MetaPipelineStepNode.from_message(node.meta_step)
             )
             
         return cls(

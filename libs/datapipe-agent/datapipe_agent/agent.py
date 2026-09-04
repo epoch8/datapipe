@@ -4,6 +4,7 @@ import grpc
 import io
 import logging
 import pandas as pd
+import time
 
 from datapipe.compute import DatapipeApp
 
@@ -96,7 +97,9 @@ class DatapipeAgent(DatapipeApp):
 
     async def send_graph(self, request_id: str, data: agent_messages.GraphEvent):
         labels = {data.label_key: data.value} if data.value else {}
+        start = time.time()
         graph = get_pipeline_graph(self.app, labels)
+        logger.info(f"({request_id}) Graph generated: {time.time() - start} s")
         
         stub = self._get_grpc_stub()
         request = agent_messages.SendGraphRequest(
