@@ -108,6 +108,7 @@ class DatapipeAgent(DatapipeApp):
         )
 
         await stub.SendGraph(request)
+        logger.info(f"({request_id}) Graph processed: {time.time() - start} s")
 
     async def run_status_handler(self):
         while True:
