@@ -140,7 +140,7 @@ class MetaPipelineStepNode(PipelineNode):
                 inputs=self.inputs,
                 outputs=self.outputs,
                 labels=[LabelsItem(item=item) for item in self.labels],
-                graph=self.graph.to_response()
+                graph=self.graph.to_message()
             )
         )
 
