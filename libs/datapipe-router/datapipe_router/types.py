@@ -51,7 +51,7 @@ class TableNode:
         return cls(
             name=response.name,
             store_class=response.store_class,
-            indexes=response.indexes,
+            indexes=list(response.indexes),
             schema=[TableColumn.from_message(column) for column in response.schema],
             size=response.size
         )
@@ -89,11 +89,11 @@ class PipelineStepNode(PipelineNode):
             name=response.name,
             type=response.type,
             transform_type=response.transform_type,
-            inputs=response.inputs,
-            outputs=response.outputs,
-            labels=[label.item for label in response.labels],
+            inputs=list(response.inputs),
+            outputs=list(response.outputs),
+            labels=[list(label.item) for label in response.labels],
             has_transform_meta=response.has_transform_meta,
-            indexes=response.indexes,
+            indexes=list(response.indexes),
             total_idx_count=response.total_idx_count,
             changed_idx_count=response.changed_idx_count
         )
@@ -124,9 +124,9 @@ class MetaPipelineStepNode(PipelineNode):
             name=response.name,
             type=response.type,
             transform_type=response.transform_type,
-            inputs=response.inputs,
-            outputs=response.outputs,
-            labels=[label.item for label in response.labels],
+            inputs=list(response.inputs),
+            outputs=list(response.outputs),
+            labels=[list(label.item) for label in response.labels],
             graph=Graph.from_message(response.graph)
         )    
 
@@ -166,7 +166,7 @@ class Graph:
         return cls(
             catalog={name: TableNode.from_message(node) for name, node in response.catalog.items()},
             pipeline=pipeline,
-            stages=response.stages
+            stages=list(response.stages)
         )
 
     def to_message(self) -> GetGraphResponse:
