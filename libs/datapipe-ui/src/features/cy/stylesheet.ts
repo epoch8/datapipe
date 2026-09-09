@@ -29,7 +29,7 @@ function nodeHeight(node: Cytoscape.NodeSingular): number {
     return stepNodeSize(name, false, getTransformPrimaryKeys(node.data())).h;
 }
 
-export function buildStylesheet(): Cytoscape.Stylesheet[] {
+export function buildStylesheet(): Cytoscape.StylesheetJson {
     const graphColors = resolveGraphColors();
     const edgeColors = resolveEdgeColors();
     return [

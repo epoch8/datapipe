@@ -2,6 +2,15 @@
   "name": "@datapipe/ui",
   "version": "0.1.0",
   "private": true,
+  "main": "src/lib/index.ts",
+  "types": "src/lib/index.ts",
+  "exports": {
+    ".": "./src/lib/index.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
   "dependencies": {
     "@ant-design/icons": "^4.8.0",
     "@datapipe/api-client": "0.1.0",
