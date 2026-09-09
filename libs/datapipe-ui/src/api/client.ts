@@ -1,4 +1,4 @@
-import { coreOpsApi, setActiveOpsApi } from "./ops";
+import { coreOpsApi } from "./ops";
 import { mergeOpsApiExtensions } from "../plugins/registry";
 import type { PipelineApiClient } from "../context/types";
 

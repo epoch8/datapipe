@@ -103,7 +103,7 @@ export function RunStepsDropdown({
                 setLoadingValues(false);
             }
         },
-        [pipelineId, labelGraph, stages],
+        [labelGraph, stages],
     );
 
     React.useEffect(() => {

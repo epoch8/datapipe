@@ -41,6 +41,7 @@ type Props = {
 
 export function TransformRunPanel({ transformName, indexKeys }: Props) {
     const uiConfig = useOptionalDatapipeUiConfig();
+    const createWsUrl = uiConfig?.createWsUrl ?? coreOpsApi.createWsUrl;
     const [form] = Form.useForm();
     const wsRef = useRef<WebSocket | null>(null);
     const [wsReady, setWsReady] = useState(false);
@@ -61,9 +62,7 @@ export function TransformRunPanel({ transformName, indexKeys }: Props) {
         const connect = () => {
             if (cancelled) return;
             setWsReady(false);
-            socket = new WebSocket(
-                transformRunWsUrl(transformName, uiConfig?.createWsUrl ?? coreOpsApi.createWsUrl),
-            );
+            socket = new WebSocket(transformRunWsUrl(transformName, createWsUrl));
             wsRef.current = socket;
 
             socket.onopen = () => {
@@ -117,7 +116,7 @@ export function TransformRunPanel({ transformName, indexKeys }: Props) {
             socket?.close();
             wsRef.current = null;
         };
-    }, [transformName]);
+    }, [transformName, createWsUrl]);
 
     const runStep = () => {
         const socket = wsRef.current;
