@@ -76,6 +76,19 @@ def test_capabilities(app):
     client = TestClient(app)
     res = client.get("/api/v1alpha3/capabilities")
     assert res.status_code == 200
+    body = res.json()
+    assert body["graph"] is True
+    assert body["table_data"] is True
+    assert body["table_meta"] is True
+    assert body["transform_meta"] is True
+    assert body["run_history"] is False
+    assert body["run_start"] is False
+    assert body["run_stop"] is False
+    assert body["run_logs"] is False
+    assert body["transform_run"] is True
+    assert body["transform_reset"] is True
+    assert "addons" in body
+    assert body.get("run_logs_configured") is False
 
 
 def test_capabilities_endpoint_with_addons(app):
@@ -92,7 +105,10 @@ def test_capabilities_endpoint_with_addons(app):
     client = TestClient(mounted)
     res = client.get("/capabilities")
     assert res.status_code == 200
-    assert res.json()["addons"] == [{"name": "demo-addon", "features": {"widgets": True}}]
+    body = res.json()
+    assert body["addons"] == [{"name": "demo-addon", "features": {"widgets": True}}]
+    assert body["run_start"] is False
+    assert body["graph"] is True
 
 
 def test_settings(app):
@@ -110,6 +126,7 @@ def test_pipeline_overview(app):
     assert "label_graph" in body
     assert "available_label_keys" in body
     assert "pipeline_id" not in body
+    assert "recent_runs" not in body
 
 
 def test_graph_includes_schema_and_stages(app):
@@ -141,3 +158,9 @@ def test_reset_metadata_unknown_transform(app):
     client = TestClient(app)
     res = client.post("/api/v1alpha3/transforms/does-not-exist/reset-metadata")
     assert res.status_code == 404
+
+
+def test_runs_endpoints_disabled(app):
+    client = TestClient(app)
+    assert client.get("/api/v1alpha3/runs").status_code == 404
+    assert client.post("/api/v1alpha3/runs", json={"labels": [], "background": False}).status_code == 404

@@ -132,7 +132,19 @@ def make_app(
 
     @app.get("/capabilities", response_model=models.CapabilitiesResponse)
     def get_capabilities() -> models.CapabilitiesResponse:
+        # Runs/logs endpoints are intentionally disabled for now (UI flags stay false).
         return models.CapabilitiesResponse(
+            graph=True,
+            table_data=True,
+            table_meta=True,
+            transform_meta=True,
+            run_history=False,
+            run_start=False,
+            run_stop=False,
+            run_logs=False,
+            transform_run=True,
+            transform_reset=True,
+            run_logs_configured=False,
             addons=collect_addon_capabilities(extra=addons),
         )
 

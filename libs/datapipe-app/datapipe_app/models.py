@@ -114,11 +114,31 @@ class AddonCapability(BaseModel):
 
 
 class CapabilitiesResponse(BaseModel):
+    """Feature flags for Ops UI hosts (local + cloud)."""
+
+    graph: bool = True
+    table_data: bool = True
+    table_meta: bool = True
+    transform_meta: bool = True
+    run_history: bool = False
+    run_start: bool = False
+    run_stop: bool = False
+    run_logs: bool = False
+    transform_run: bool = True
+    transform_reset: bool = True
     addons: List[AddonCapability] = Field(default_factory=list)
+    # Legacy optional fields kept for older clients / plugins.
+    ml_metrics: Optional[bool] = None
+    ml_training: Optional[bool] = None
+    pipeline_id: Optional[str] = None
+    run_logs_configured: Optional[bool] = None
 
 
 class SettingsResponse(BaseModel):
     version: str
+    pipeline_id: Optional[str] = None
+    observability_db_connected: Optional[bool] = None
+    run_logs_configured: Optional[bool] = None
 
 
 class ResetTransformMetadataResponse(BaseModel):

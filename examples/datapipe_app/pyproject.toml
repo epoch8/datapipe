@@ -7,6 +7,7 @@ dependencies = [
     "alembic",
     "datapipe-app",
     "datapipe-core[sqlite]",
+    "datapipe-ui",
 ]
 
 [dependency-groups]
@@ -18,3 +19,4 @@ dev = [
 [tool.uv.sources]
 datapipe-app = { path = "../../libs/datapipe-app", editable = true }
 datapipe-core = { path = "../../libs/datapipe-core", editable = true }
+datapipe-ui = { path = "../../libs/datapipe-ui", editable = true }
