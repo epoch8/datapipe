@@ -81,10 +81,10 @@ def test_capabilities(app):
     assert body["table_data"] is True
     assert body["table_meta"] is True
     assert body["transform_meta"] is True
-    assert body["run_history"] is True
-    assert body["run_start"] is True
-    assert body["run_stop"] is True
-    assert body["run_logs"] is True
+    assert body["run_history"] is False
+    assert body["run_start"] is False
+    assert body["run_stop"] is False
+    assert body["run_logs"] is False
     assert body["transform_run"] is True
     assert body["transform_reset"] is True
     assert "addons" in body
@@ -107,7 +107,7 @@ def test_capabilities_endpoint_with_addons(app):
     assert res.status_code == 200
     body = res.json()
     assert body["addons"] == [{"name": "demo-addon", "features": {"widgets": True}}]
-    assert body["run_start"] is True
+    assert body["run_start"] is False
     assert body["graph"] is True
 
 
@@ -125,8 +125,9 @@ def test_pipeline_overview(app):
     assert "stages" in body
     assert "label_graph" in body
     assert "available_label_keys" in body
-    assert "recent_runs" in body
-    assert body.get("pipeline_id") == "local"
+    assert "pipeline_id" not in body
+    assert "recent_runs" not in body
+
 
 def test_graph_includes_schema_and_stages(app):
     client = TestClient(app)
@@ -159,33 +160,7 @@ def test_reset_metadata_unknown_transform(app):
     assert res.status_code == 404
 
 
-def test_runs_list_empty(app):
+def test_runs_endpoints_disabled(app):
     client = TestClient(app)
-    res = client.get("/api/v1alpha3/runs")
-    assert res.status_code == 200
-    body = res.json()
-    assert body["rows"] == []
-    assert body["total"] == 0
-
-
-def test_start_run_and_logs(test_client: TestClient):
-    start = test_client.post("/api/v1alpha3/runs", json={"labels": [], "background": False})
-    assert start.status_code == 200
-    started = start.json()
-    assert "run_id" in started
-    assert started["status"] in ("succeeded", "failed", "running")
-
-    run_id = started["run_id"]
-    detail = test_client.get(f"/api/v1alpha3/runs/{run_id}")
-    assert detail.status_code == 200
-    assert detail.json()["run_id"] == run_id
-
-    logs = test_client.get(f"/api/v1alpha3/runs/{run_id}/logs")
-    assert logs.status_code == 200
-    body = logs.json()
-    assert body["run_id"] == run_id
-    assert isinstance(body["lines"], list)
-
-    listed = test_client.get("/api/v1alpha3/runs")
-    assert listed.status_code == 200
-    assert listed.json()["total"] >= 1
+    assert client.get("/api/v1alpha3/runs").status_code == 404
+    assert client.post("/api/v1alpha3/runs", json={"labels": [], "background": False}).status_code == 404

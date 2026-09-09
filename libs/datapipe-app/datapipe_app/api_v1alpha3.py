@@ -1,12 +1,12 @@
-"""Datapipe Ops API v1alpha3: pipeline UI, meta, and local in-memory runs."""
+"""Slim Datapipe Ops API v1alpha3 (cloud): pipeline UI + meta, no runs/logs."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib.metadata
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import List, Optional, Sequence, Set
 
-from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep, run_steps
+from datapipe.compute import Catalog, ComputeStep, DataStore, Pipeline, PipelineStep
 from datapipe.step.batch_generate import BatchGenerate
 from datapipe.step.batch_transform import (
     BaseBatchTransformStep,
@@ -18,7 +18,7 @@ from datapipe.step.update_external_table import UpdateExternalTable
 from datapipe.store.database import TableStoreDB
 from datapipe.store.table_store import TableStore
 from datapipe.types import Labels
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from sqlalchemy.sql.expression import select
 from sqlalchemy.sql.functions import count
@@ -38,7 +38,6 @@ from datapipe_app.graph.label_graph import (
     build_label_graph,
     default_label_key,
 )
-from datapipe_app.local_runs import LocalRunStore, normalize_labels, trigger_from_labels
 from datapipe_app.meta_sql import require_sql_transform_meta
 from datapipe_app.pipeline_steps import pipeline_step_labels
 
@@ -130,77 +129,36 @@ def make_app(
     addons: Optional[Sequence[models.AddonCapability]] = None,
 ) -> FastAPI:
     app = FastAPI(title="Datapipe Ops API v1alpha3")
-    run_store = LocalRunStore(pipeline_id="local")
-
-    def _execute_run(run_id: str, labels: Labels) -> None:
-        run = run_store.get(run_id)
-        if run is None:
-            return
-        if run.cancel_requested or run.status != "running":
-            return
-        selected = filter_steps_by_labels(steps, labels=labels) if labels else steps
-        run.append_log("info", f"Executing {len(selected)} step(s)")
-        try:
-            run_steps(ds=ds, steps=selected)
-        except Exception as exc:  # noqa: BLE001 — surface to UI
-            if run.cancel_requested or run.status == "interrupted":
-                return
-            run_store.finish(run_id, status="failed", error=str(exc))
-            return
-        if run.cancel_requested or run.status == "interrupted":
-            return
-        with run._lock:
-            run.steps = [
-                {
-                    "step_name": s.get_name(),
-                    "status": "succeeded",
-                    "started_at": None,
-                    "finished_at": None,
-                    "processed": None,
-                    "total": None,
-                    "error": None,
-                }
-                for s in selected
-            ]
-        run_store.finish(run_id, status="succeeded")
 
     @app.get("/capabilities", response_model=models.CapabilitiesResponse)
     def get_capabilities() -> models.CapabilitiesResponse:
-        # Honest local flags: graph/table/transform endpoints exist; runs are
-        # in-memory (history/start/stop/logs). run_logs_configured stays false
-        # because there is no durable log backend (ClickHouse/etc.).
+        # Runs/logs endpoints are intentionally disabled for now (UI flags stay false).
         return models.CapabilitiesResponse(
             graph=True,
             table_data=True,
             table_meta=True,
             transform_meta=True,
-            run_history=True,
-            run_start=True,
-            run_stop=True,
-            run_logs=True,
+            run_history=False,
+            run_start=False,
+            run_stop=False,
+            run_logs=False,
             transform_run=True,
             transform_reset=True,
             run_logs_configured=False,
-            pipeline_id=run_store.pipeline_id,
             addons=collect_addon_capabilities(extra=addons),
         )
 
     @app.get("/settings", response_model=models.SettingsResponse)
     def get_settings() -> models.SettingsResponse:
-        return models.SettingsResponse(
-            version=_package_version(),
-            pipeline_id=run_store.pipeline_id,
-            observability_db_connected=False,
-            run_logs_configured=False,
-        )
+        return models.SettingsResponse(version=_package_version())
 
-    @app.get("/pipeline")
+    @app.get("/pipeline", response_model=models.PipelineDetailResponse)
     def get_pipeline_detail(
         label_key: Optional[str] = Query(None),
-    ) -> Dict[str, Any]:
+    ) -> models.PipelineDetailResponse:
         status_cache: dict[str, dict] = {}
         active_label_key = default_label_key(steps, label_key)
-        detail = models.PipelineDetailResponse(
+        return models.PipelineDetailResponse(
             stages=build_stage_summary(steps, ds, status_cache),
             stage_edges=build_stage_edges(steps),
             label_graph=build_label_graph(
@@ -210,84 +168,6 @@ def make_app(
                 status_cache=status_cache,
             ),
             available_label_keys=available_label_keys(steps),
-        )
-        payload = detail.model_dump(by_alias=True)
-        payload["pipeline_id"] = run_store.pipeline_id
-        payload["display_name"] = run_store.pipeline_id
-        payload["recent_runs"] = [r.to_summary() for r in run_store.recent(10)]
-        return payload
-
-    @app.get("/runs")
-    def list_runs(
-        status: Optional[str] = None,
-        limit: int = 25,
-        offset: int = 0,
-    ) -> Dict[str, Any]:
-        rows, total = run_store.list_runs(status=status, limit=min(limit, 200), offset=offset)
-        statuses = sorted({r.status for r in rows})
-        return {
-            "rows": [r.to_list_row() for r in rows],
-            "total": total,
-            "filters": {"statuses": statuses, "stages": [], "triggers": []},
-            "counts_by_status": {s: sum(1 for r in rows if r.status == s) for s in statuses},
-        }
-
-    @app.get("/runs/{run_id}")
-    def get_run(run_id: str) -> Dict[str, Any]:
-        run = run_store.get(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-        return run.to_detail()
-
-    @app.get("/runs/{run_id}/logs")
-    def get_run_logs(run_id: str, after: int = 0, limit: int = 500) -> Dict[str, Any]:
-        run = run_store.get(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-        lines = run.get_logs(after=after, limit=min(max(limit, 0), 1000))
-        return {
-            "run_id": run_id,
-            "lines": lines,
-            "last_seq": lines[-1]["seq"] if lines else after,
-            "max_seq": run.max_log_seq(),
-        }
-
-    @app.post("/runs", response_model=models.StartRunResponse)
-    def start_run(
-        req: models.StartRunRequest,
-        background_tasks: BackgroundTasks,
-    ) -> models.StartRunResponse:
-        labels = normalize_labels(req.labels)
-        selected = filter_steps_by_labels(steps, labels=labels) if labels else steps
-        run = run_store.create(
-            labels=labels,
-            trigger=trigger_from_labels(labels),
-            step_names=[s.get_name() for s in selected],
-        )
-        if req.background:
-            background_tasks.add_task(_execute_run, run.run_id, labels)
-            return models.StartRunResponse(run_id=run.run_id, status="running")
-        _execute_run(run.run_id, labels)
-        finished = run_store.get(run.run_id)
-        return models.StartRunResponse(
-            run_id=run.run_id,
-            status=finished.status if finished else "failed",
-        )
-
-    @app.post("/runs/{run_id}/stop", response_model=models.StopRunResponse)
-    def stop_run(run_id: str) -> models.StopRunResponse:
-        run, was_running = run_store.request_stop(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-        if not was_running and run.status != "interrupted":
-            raise HTTPException(
-                status_code=409,
-                detail=f"Run {run_id} is not running (status={run.status})",
-            )
-        return models.StopRunResponse(
-            run_id=run_id,
-            status=run.status,
-            stopped=was_running,
         )
 
     @app.get("/graph", response_model=models.GraphResponse)

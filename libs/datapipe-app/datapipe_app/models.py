@@ -141,22 +141,6 @@ class SettingsResponse(BaseModel):
     run_logs_configured: Optional[bool] = None
 
 
-class StartRunRequest(BaseModel):
-    labels: List[List[str]] = Field(default_factory=list)
-    background: bool = True
-
-
-class StartRunResponse(BaseModel):
-    run_id: str
-    status: str
-
-
-class StopRunResponse(BaseModel):
-    run_id: str
-    status: str
-    stopped: bool
-
-
 class ResetTransformMetadataResponse(BaseModel):
     transform_name: str
     status: str = "ok"
