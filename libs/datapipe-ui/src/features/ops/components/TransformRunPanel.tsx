@@ -11,21 +11,27 @@ import {
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import type { IdxRow } from "../../../types";
+import { coreOpsApi } from "../../../api/ops";
+import { useOptionalDatapipeUiConfig } from "../../../context/DatapipeUiContext";
 
 const { Text } = Typography;
 
-function transformRunWsUrl(transformName: string): string {
+function transformRunWsUrl(
+    transformName: string,
+    createWsUrl?: (path: string) => string,
+): string {
     const configured = (process.env["REACT_APP_WEBSOCKET_URL"] as string) || "";
     const encoded = encodeURIComponent(transformName);
     if (configured.startsWith("ws://") || configured.startsWith("wss://")) {
         const base = configured.endsWith("/") ? configured : `${configured}/`;
         return `${base}${encoded}/run-status`;
     }
-    const pathBase =
-        configured || "/api/v1alpha3/ws/transform/";
-    const path = `${pathBase.endsWith("/") ? pathBase : `${pathBase}/`}${encoded}/run-status`;
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${protocol}//${window.location.host}${path}`;
+    const path = `/api/v1alpha3/ws/transform/${encoded}/run-status`;
+    if (createWsUrl) return createWsUrl(path);
+    if (coreOpsApi.createWsUrl) return coreOpsApi.createWsUrl(path);
+    const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = typeof window !== "undefined" ? window.location.host : "localhost";
+    return `${protocol}//${host}${path}`;
 }
 
 type Props = {
@@ -34,6 +40,7 @@ type Props = {
 };
 
 export function TransformRunPanel({ transformName, indexKeys }: Props) {
+    const uiConfig = useOptionalDatapipeUiConfig();
     const [form] = Form.useForm();
     const wsRef = useRef<WebSocket | null>(null);
     const [wsReady, setWsReady] = useState(false);
@@ -54,7 +61,9 @@ export function TransformRunPanel({ transformName, indexKeys }: Props) {
         const connect = () => {
             if (cancelled) return;
             setWsReady(false);
-            socket = new WebSocket(transformRunWsUrl(transformName));
+            socket = new WebSocket(
+                transformRunWsUrl(transformName, uiConfig?.createWsUrl ?? coreOpsApi.createWsUrl),
+            );
             wsRef.current = socket;
 
             socket.onopen = () => {

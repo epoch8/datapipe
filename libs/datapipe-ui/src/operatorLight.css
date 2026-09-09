@@ -48,6 +48,7 @@
     --dp-table-border: #ff7a1a;
     --dp-table-icon: #ff6b00;
     --dp-table-text: #3e2407;
+    --dp-table-meta: #6f3b05;
 
     --dp-transform-bg: #effff3;
     --dp-transform-bg-2: #dcf8e5;
@@ -85,6 +86,13 @@
 #root {
     zoom: var(--dp-ui-scale);
     font-size: calc(14px * var(--dp-font-scale));
+}
+
+/* LocalShell fills the viewport; keep zoom at 1 so graph height math matches CSS. */
+#root:has(.dp-local-shell) {
+    zoom: 1;
+    font-size: 14px;
+    height: 100%;
 }
 
 /* Enlarge normal text ~20% without changing the layout zoom. antd hardcodes px
@@ -368,6 +376,11 @@
     position: relative;
     flex: 0 0 auto;
     margin: 8px 0 12px;
+    padding-right: 0;
+}
+
+/* Only reserve the right column when Recent runs is actually rendered. */
+.graph-page-overview:has(.graph-page-overview-runs) {
     padding-right: 292px; /* 280px runs + 12px gap */
 }
 
@@ -567,7 +580,8 @@
 .pipeline-card-body {
     position: relative;
     flex: 1 1 0;
-    min-height: 0;
+    /* Fallback when parent flex height is unavailable (e.g. shell not full-bleed). */
+    min-height: 420px;
     display: flex;
     flex-direction: column;
     overflow: hidden;

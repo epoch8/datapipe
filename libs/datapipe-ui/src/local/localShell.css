@@ -1,0 +1,213 @@
+.dp-local-shell {
+  /* LocalShell owns viewport layout; disable CRA ops zoom that leaves a white gutter. */
+  --dp-ui-scale: 1;
+  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--dp-bg, #f4f7fb);
+  color: var(--dp-text, #0f1b2d);
+  font-family: var(--dp-font, "DM Sans", sans-serif);
+}
+
+.dp-local-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid var(--dp-border, #d5dee8);
+  background: var(--dp-bg-elevated, #fff);
+}
+
+.dp-local-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.dp-local-logo {
+  font-size: 1.1rem;
+  color: var(--dp-accent, #0d9488);
+}
+
+.dp-local-pipeline-chip {
+  margin-left: 0.35rem;
+}
+
+.dp-local-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dp-api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--dp-text-muted, #5b6b7c);
+}
+
+.dp-api-status .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #ef4444;
+}
+
+.dp-api-status.ok .dot {
+  background: #22c55e;
+}
+
+.dp-local-subheader {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--dp-border, #d5dee8);
+  background: var(--dp-bg-elevated, #fff);
+}
+
+.dp-local-title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--dp-text, #0f1b2d);
+}
+
+.dp-local-tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: var(--dp-bg-muted, #e8eef6);
+}
+
+.dp-local-tab {
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  color: var(--dp-text-muted, #5b6b7c);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.dp-local-tab.active,
+.dp-local-tab:hover {
+  background: var(--dp-bg, #f4f7fb);
+  color: var(--dp-accent, #0d9488);
+}
+
+.dp-local-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.dp-local-main > .connectivity-banner,
+.dp-local-main > .ant-alert {
+  flex: 0 0 auto;
+}
+
+.dp-local-main > .ops-page,
+.dp-local-main > .graph-page,
+.dp-local-main > div {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Match OpsShell `.datapipe-content-padded` — without this Overview/Runs hug the left edge. */
+.dp-local-main > .ops-page {
+  padding: 24px 44px;
+  box-sizing: border-box;
+}
+
+/* Graph needs a flex column so cytoscape gets a real height (not 0). */
+.dp-local-main > .graph-page {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Same horizontal inset as cloud island / OpsShell graph padding. */
+  padding: 0 44px 16px;
+  box-sizing: border-box;
+}
+
+/* Mirror cloud workspace.html graph proportions: compact label strip + tall DAG. */
+.dp-local-main > .graph-page > .graph-page-overview {
+  flex: 0 1 22%;
+  max-height: 22%;
+  min-height: 100px;
+  overflow: auto;
+  margin-bottom: 8px;
+  /* No Recent runs column in LocalShell GraphPage — don't reserve 292px. */
+  padding-right: 0;
+}
+
+.dp-local-main > .graph-page > .graph-page-overview .graph-page-overview-main {
+  min-height: 0;
+  max-height: 100%;
+}
+
+.dp-local-main > .graph-page .pipeline-label-overview-compact {
+  margin-bottom: 0 !important;
+  max-height: 100%;
+}
+
+.dp-local-main > .graph-page .pipeline-label-overview-compact .ant-card-body {
+  padding: 8px 12px 10px !important;
+}
+
+.dp-local-main > .graph-page .pipeline-label-overview-compact .pipeline-label-graph-scroll {
+  zoom: 0.7;
+  max-height: 100%;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+.dp-local-main > .graph-page > .pipeline-card {
+  flex: 1 1 78% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+}
+
+.dp-local-main > .graph-page > .pipeline-card > .pipeline-card-body {
+  flex: 1 1 0%;
+  min-height: 0 !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.dp-local-main > .graph-page .pipeline-graph-shell {
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  flex: none !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.dp-local-main > .graph-page .pipeline-graph-shell .pipeline-graph-embedded,
+.dp-local-main > .graph-page .pipeline-graph-shell .cy-container {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+@media (max-width: 960px) {
+  .dp-local-subheader {
+    grid-template-columns: 1fr;
+  }
+}

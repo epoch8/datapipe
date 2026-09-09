@@ -1,0 +1,62 @@
+export type {
+    AddonCapability,
+    Capabilities,
+    ChartSeries,
+    ChartSpec,
+    Enrichment,
+    FocusFilter,
+    GetDataRequest,
+    GetDataResponse,
+    GetGraphOptions,
+    GetPipelineOptions,
+    GraphData,
+    GraphNode,
+    LabelContainment,
+    LabelGraphEdge,
+    LabelGraphEdgeKind,
+    LabelGraphNode,
+    LabelGraphNodeKind,
+    LabelGraphPayload,
+    LabelInterleaving,
+    LabelSegment,
+    LabelSharedRelation,
+    MetaNode,
+    PipeTable,
+    PipelineDetail,
+    RecentRunSummary,
+    ResetTransformMetadataResponse,
+    RunDetail,
+    RunListRow,
+    RunLogLine,
+    RunLogsResponse,
+    RunsListParams,
+    RunsListResponse,
+    SettingsInfo,
+    StageEdge,
+    StageItem,
+    StageRecentRunsResponse,
+    StartRunResponse,
+    StopRunResponse,
+    TableColumn,
+    TransformNode,
+} from "./types";
+
+export {
+    ApiError,
+    apiErrorFromResponse,
+    apiFetch,
+    getApiErrorDescription,
+    getApiErrorMessage,
+    isBrowserOffline,
+    readApiErrorBody,
+    toApiError,
+} from "./http";
+export type { ApiErrorKind } from "./http";
+
+export {
+    createLocalPipelineApiClient,
+} from "./client";
+export type {
+    LocalPipelineApiClientOptions,
+    PipelineApiClient,
+} from "./client";

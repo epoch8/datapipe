@@ -1,8 +1,10 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Button, DatePicker, Space, Tag } from "antd";
 import { ReloadOutlined, StarOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import moment, { Moment } from "moment";
+import { useOptionalDatapipeUiConfig } from "../../../context/DatapipeUiContext";
 
 type StatusChip = { label: string; color?: string; variant?: "success" | "purple" | "default" };
 
@@ -19,6 +21,20 @@ type Props = {
     extra?: React.ReactNode;
 };
 
+function isCloudHost(): boolean {
+    try {
+        const raw = (window as unknown as { __DP_PIPELINE__?: { mode?: string } }).__DP_PIPELINE__;
+        return raw?.mode === "cloud";
+    } catch {
+        return false;
+    }
+}
+
+function cloudActionsSlot(): HTMLElement | null {
+    if (typeof document === "undefined") return null;
+    return document.getElementById("pipeline-workspace-actions");
+}
+
 export function PageHeader({
     breadcrumbs = [],
     title,
@@ -31,8 +47,71 @@ export function PageHeader({
     primaryAction,
     extra,
 }: Props) {
+    const ui = useOptionalDatapipeUiConfig();
+    const cloud = ui?.mode === "cloud" || isCloudHost();
     const showDateRange = Boolean(dateRange && onDateRangeChange);
     const showActions = showDateRange || Boolean(onRefresh) || Boolean(primaryAction) || Boolean(extra);
+    const [actionsSlot, setActionsSlot] = React.useState<HTMLElement | null>(() =>
+        cloud ? cloudActionsSlot() : null,
+    );
+
+    React.useEffect(() => {
+        if (!cloud) return;
+        setActionsSlot(cloudActionsSlot());
+    }, [cloud]);
+
+    const actions = showActions ? (
+        <div className="ops-page-header-actions">
+            {showDateRange && (
+                <DatePicker.RangePicker
+                    value={dateRange!}
+                    onChange={(vals) => {
+                        if (vals?.[0] && vals?.[1]) {
+                            onDateRangeChange!([vals[0], vals[1]]);
+                        }
+                    }}
+                    format="MMM D, YYYY"
+                    className="ops-date-range"
+                />
+            )}
+            {onRefresh && (
+                <Button icon={<ReloadOutlined />} onClick={onRefresh}>
+                    Refresh
+                </Button>
+            )}
+            {primaryAction &&
+                (primaryAction.href ? (
+                    <Link to={primaryAction.href}>
+                        <Button
+                            type="primary"
+                            disabled={primaryAction.disabled}
+                            title={primaryAction.title}
+                        >
+                            {primaryAction.label}
+                        </Button>
+                    </Link>
+                ) : (
+                    <Button
+                        type="primary"
+                        onClick={primaryAction.onClick}
+                        disabled={primaryAction.disabled}
+                        title={primaryAction.title}
+                    >
+                        {primaryAction.label}
+                    </Button>
+                ))}
+            {extra}
+        </div>
+    ) : null;
+
+    /* CloudShell owns breadcrumbs / section title — actions go in the host toolbar. */
+    if (cloud) {
+        if (!actions) return null;
+        if (actionsSlot) {
+            return createPortal(actions, actionsSlot);
+        }
+        return <div className="ops-page-header ops-page-header-cloud">{actions}</div>;
+    }
 
     return (
         <div className="ops-page-header">
@@ -67,49 +146,7 @@ export function PageHeader({
                             ))}
                         </Space>
                     )}
-                    {showActions && (
-                        <div className="ops-page-header-actions">
-                            {showDateRange && (
-                                <DatePicker.RangePicker
-                                    value={dateRange!}
-                                    onChange={(vals) => {
-                                        if (vals?.[0] && vals?.[1]) {
-                                            onDateRangeChange!([vals[0], vals[1]]);
-                                        }
-                                    }}
-                                    format="MMM D, YYYY"
-                                    className="ops-date-range"
-                                />
-                            )}
-                            {onRefresh && (
-                                <Button icon={<ReloadOutlined />} onClick={onRefresh}>
-                                    Refresh
-                                </Button>
-                            )}
-                            {primaryAction &&
-                                (primaryAction.href ? (
-                                    <Link to={primaryAction.href}>
-                                        <Button
-                                            type="primary"
-                                            disabled={primaryAction.disabled}
-                                            title={primaryAction.title}
-                                        >
-                                            {primaryAction.label}
-                                        </Button>
-                                    </Link>
-                                ) : (
-                                    <Button
-                                        type="primary"
-                                        onClick={primaryAction.onClick}
-                                        disabled={primaryAction.disabled}
-                                        title={primaryAction.title}
-                                    >
-                                        {primaryAction.label}
-                                    </Button>
-                                ))}
-                            {extra}
-                        </div>
-                    )}
+                    {actions}
                 </div>
             </div>
         </div>

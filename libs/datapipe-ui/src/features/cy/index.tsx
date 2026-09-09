@@ -13,7 +13,7 @@ import { KeyListPopover, type KeyPopoverState } from "./KeyListPopover";
 import { NodeInspectorPanel, type InspectorState } from "./NodeInspectorPanel";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { reprocessData } from "./process";
-import { stylesheet } from "./stylesheet";
+import { buildStylesheet, stylesheet } from "./stylesheet";
 import { syncCyGraph } from "./syncCyGraph";
 import { initHtmlLabelOpacitySync, setNodeVisualOpacity } from "./htmlLabelOpacity";
 import { initInternalEdgeOverlay, refreshInternalEdgeOverlay } from "./internalEdgeOverlay";
@@ -586,6 +586,29 @@ function PipelineGraphView({
         };
     }, [cy]);
 
+    // Re-apply Cytoscape colors when the host theme toggles (CSS vars alone
+    // cover HTML node labels; this covers edges / expanded group frames).
+    useEffect(() => {
+        if (!cy || cy.destroyed()) return;
+        const applyThemeStyles = () => {
+            if (cy.destroyed()) return;
+            cy.style(buildStylesheet());
+            refreshInternalEdgeOverlay(cy);
+        };
+        applyThemeStyles();
+        const root = document.documentElement;
+        const observer = new MutationObserver(applyThemeStyles);
+        observer.observe(root, {
+            attributes: true,
+            attributeFilter: ["data-ui-theme", "data-bs-theme", "data-theme"],
+        });
+        window.addEventListener("dp-ui-theme", applyThemeStyles);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener("dp-ui-theme", applyThemeStyles);
+        };
+    }, [cy]);
+
     useEffect(() => {
         if (!cy || cy.destroyed()) return;
 
@@ -714,7 +737,7 @@ function PipelineGraphView({
             className="pipeline-graph-shell"
             style={
                 fillParent
-                    ? { flex: "1 1 auto", minHeight: 0, height: "auto" }
+                    ? { flex: "1 1 0%", minHeight: 0, overflow: "hidden" }
                     : { height }
             }
         >

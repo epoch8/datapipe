@@ -200,17 +200,24 @@ export interface AddonCapability {
     features?: Record<string, unknown>;
 }
 
-/** Cloud Ops API `/capabilities` (addons only; no pipeline_id / runs). */
+/** Ops API capabilities shared by local + cloud hosts. */
 export interface Capabilities {
+    graph?: boolean;
+    table_data?: boolean;
+    table_meta?: boolean;
+    transform_meta?: boolean;
+    run_history?: boolean;
+    run_start?: boolean;
+    run_stop?: boolean;
+    run_logs?: boolean;
+    transform_run?: boolean;
+    transform_reset?: boolean;
     addons: AddonCapability[];
-    /** @deprecated Kept optional for plugin code that still reads these flags. */
-    ml_metrics?: boolean;
-    /** @deprecated Kept optional for plugin code that still reads these flags. */
-    ml_training?: boolean;
-    /** @deprecated Removed from cloud API. */
-    pipeline_id?: string;
-    /** @deprecated Removed from cloud API. */
+    /** @deprecated Prefer run_logs. */
     run_logs_configured?: boolean;
+    ml_metrics?: boolean;
+    ml_training?: boolean;
+    pipeline_id?: string;
 }
 
 export interface ResetTransformMetadataResponse {

@@ -21,7 +21,11 @@
     "jsx": "react-jsx",
     "baseUrl": "src",
     "paths": {
-      "@datapipe/ui/*": ["./*"]
+      "@datapipe/ui/*": ["./*"],
+      "@datapipe/ui-core": ["../../packages/ui-core/src/index.ts"],
+      "@datapipe/ui-core/*": ["../../packages/ui-core/src/*"],
+      "@datapipe/api-client": ["../../packages/api-client/src/index.ts"],
+      "@datapipe/api-client/*": ["../../packages/api-client/src/*"]
     }
   },
   "include": [

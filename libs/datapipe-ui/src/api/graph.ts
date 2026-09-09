@@ -1,8 +1,5 @@
 import { ApiError, apiFetch, readApiErrorBody } from "./http";
-
-const GRAPH_BASE =
-    (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
-const API_BASE = GRAPH_BASE.replace(/\/graph$/, "");
+import { coreOpsApi } from "./ops";
 
 async function fetchJsonOrThrow(url: string): Promise<unknown> {
     const response = await apiFetch(url);
@@ -16,26 +13,33 @@ async function fetchJsonOrThrow(url: string): Promise<unknown> {
     return response.json();
 }
 
+/**
+ * Fetch pipeline graph. Prefer {@link coreOpsApi.getGraph} when available;
+ * falls back to relative `/api/v1alpha3/graph` for legacy callers.
+ */
 export async function fetchGraph(
     stage?: string | null,
     labelKey?: string | null,
 ): Promise<unknown> {
+    if (coreOpsApi.getGraph) {
+        return coreOpsApi.getGraph({ stage, label_key: labelKey });
+    }
     const params = new URLSearchParams();
     if (stage) params.set("stage", stage);
     if (labelKey && labelKey !== "stage") params.set("label_key", labelKey);
     const query = params.toString();
-    const url = query ? `${GRAPH_BASE}?${query}` : GRAPH_BASE;
+    const url = query ? `/api/v1alpha3/graph?${query}` : "/api/v1alpha3/graph";
     return fetchJsonOrThrow(url);
 }
 
 export async function fetchTableSize(tableName: string): Promise<number> {
-    const url = `${API_BASE}/tables/${encodeURIComponent(tableName)}/size`;
+    const url = `/api/v1alpha3/tables/${encodeURIComponent(tableName)}/size`;
     const data = (await fetchJsonOrThrow(url)) as { size: number };
     return data.size;
 }
 
 export async function fetchTransformMetaSize(transformName: string): Promise<number> {
-    const url = `${API_BASE}/transforms/${encodeURIComponent(transformName)}/meta-size`;
+    const url = `/api/v1alpha3/transforms/${encodeURIComponent(transformName)}/meta-size`;
     const data = (await fetchJsonOrThrow(url)) as { size: number };
     return data.size;
 }

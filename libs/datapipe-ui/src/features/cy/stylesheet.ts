@@ -1,5 +1,5 @@
 import Cytoscape from "cytoscape";
-import { edgeColors, graphColors } from "./graphColors";
+import { resolveEdgeColors, resolveGraphColors } from "./graphColors";
 import { getTransformPrimaryKeys } from "./nodeKeyChips";
 import { groupBoxSize, stepNodeSize, tableNodeSize } from "./graphNodeLayout";
 
@@ -29,7 +29,10 @@ function nodeHeight(node: Cytoscape.NodeSingular): number {
     return stepNodeSize(name, false, getTransformPrimaryKeys(node.data())).h;
 }
 
-export const stylesheet: Cytoscape.Stylesheet[] = [
+export function buildStylesheet(): Cytoscape.Stylesheet[] {
+    const graphColors = resolveGraphColors();
+    const edgeColors = resolveEdgeColors();
+    return [
     {
         selector: "node",
         style: {
@@ -276,3 +279,8 @@ export const stylesheet: Cytoscape.Stylesheet[] = [
         },
     },
 ];
+}
+
+/** Snapshot at module load; prefer buildStylesheet() after theme changes. */
+export const stylesheet = buildStylesheet();
+

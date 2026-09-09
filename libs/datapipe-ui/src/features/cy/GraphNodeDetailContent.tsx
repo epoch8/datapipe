@@ -31,7 +31,7 @@ function InspectorSection({ title, count, children }: InspectorSectionProps) {
 
 function KeyChipList({ kind, keys }: { kind: "pk" | "tpk" | "label"; keys: string[] }) {
     if (!keys.length) {
-        return <span style={{ color: "#667085", fontSize: 12 }}>No {kind === "label" ? "labels" : "keys"}</span>;
+        return <span className="inspector-muted" style={{ fontSize: 12 }}>No {kind === "label" ? "labels" : "keys"}</span>;
     }
     return (
         <div className="inspector-chip-list">

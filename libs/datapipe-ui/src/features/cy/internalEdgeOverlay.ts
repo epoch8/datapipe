@@ -1,5 +1,5 @@
 import Cytoscape from "cytoscape";
-import { edgeColors } from "./graphColors";
+import { resolveEdgeColors } from "./graphColors";
 
 const overlayInitStore = new WeakMap<Cytoscape.Core, true>();
 const overlayLayerStore = new WeakMap<Cytoscape.Core, HTMLDivElement>();
@@ -19,13 +19,16 @@ const ARROW_MARKER = {
     path: "M 0 0 L 10 5 L 0 10 z",
 } as const;
 
-const ARROW_MARKERS: Array<{ id: string; fill: string }> = [
-    { id: "cy-internal-edge-arrow", fill: edgeColors.default },
-    { id: "cy-internal-edge-arrow-sequential", fill: edgeColors.sequential },
-    { id: "cy-internal-edge-arrow-related", fill: edgeColors.related },
-    { id: "cy-internal-edge-arrow-focused", fill: edgeColors.active },
-    { id: "cy-internal-edge-arrow-failed", fill: edgeColors.error },
-];
+function arrowMarkers(): Array<{ id: string; fill: string }> {
+    const edgeColors = resolveEdgeColors();
+    return [
+        { id: "cy-internal-edge-arrow", fill: edgeColors.default },
+        { id: "cy-internal-edge-arrow-sequential", fill: edgeColors.sequential },
+        { id: "cy-internal-edge-arrow-related", fill: edgeColors.related },
+        { id: "cy-internal-edge-arrow-focused", fill: edgeColors.active },
+        { id: "cy-internal-edge-arrow-failed", fill: edgeColors.error },
+    ];
+}
 
 function setAttrIfChanged(element: Element, name: string, value: string): void {
     if (element.getAttribute(name) !== value) element.setAttribute(name, value);
@@ -110,6 +113,7 @@ function edgePathD(edge: Cytoscape.EdgeSingular): string {
 }
 
 function edgeStroke(edge: Cytoscape.EdgeSingular): string {
+    const edgeColors = resolveEdgeColors();
     if (edge.hasClass("failed")) return edgeColors.error;
     if (edge.hasClass("related")) return edgeColors.related;
     if (edge.hasClass("focused")) return edgeColors.active;
@@ -156,7 +160,7 @@ function updateOverlayCamera(cy: Cytoscape.Core, layer: HTMLDivElement, defs: SV
     // on screen after the CSS scale.
     const mw = String(ARROW_MARKER.markerWidth / zoom);
     const mh = String(ARROW_MARKER.markerHeight / zoom);
-    ARROW_MARKERS.forEach(({ id }) => {
+    arrowMarkers().forEach(({ id }) => {
         const marker = defs.querySelector(`#${id}`);
         if (!marker) return;
         setAttrIfChanged(marker, "markerWidth", mw);
@@ -199,7 +203,7 @@ function ensureOverlayRoot(cy: Cytoscape.Core): {
         svg.insertBefore(defs, svg.firstChild);
     }
 
-    ARROW_MARKERS.forEach(({ id, fill }) => {
+    arrowMarkers().forEach(({ id, fill }) => {
         let marker = defs!.querySelector(`#${id}`) as SVGMarkerElement | null;
         if (!marker) {
             marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");

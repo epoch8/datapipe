@@ -1,8 +1,23 @@
-import { coreOpsApi } from "./ops";
+import { coreOpsApi, setActiveOpsApi } from "./ops";
 import { mergeOpsApiExtensions } from "../plugins/registry";
+import type { PipelineApiClient } from "../context/types";
 
-export const opsApi = { ...coreOpsApi, ...mergeOpsApiExtensions() };
+function buildOpsApi(): PipelineApiClient {
+    return { ...coreOpsApi, ...mergeOpsApiExtensions() };
+}
 
-export type OpsApi = typeof coreOpsApi;
+/**
+ * Live Ops API facade. Always reads the current {@link coreOpsApi}
+ * (updated via {@link setActiveOpsApi}) so hosts can inject adapters.
+ */
+export const opsApi: PipelineApiClient = new Proxy({} as PipelineApiClient, {
+    get(_target, prop, _receiver) {
+        const live = buildOpsApi() as unknown as Record<string | symbol, unknown>;
+        const value = live[prop];
+        return typeof value === "function" ? value.bind(live) : value;
+    },
+});
 
-export { getRefreshIntervalMs, exportCsv } from "./ops";
+export type OpsApi = PipelineApiClient;
+
+export { getRefreshIntervalMs, exportCsv, setActiveOpsApi } from "./ops";
