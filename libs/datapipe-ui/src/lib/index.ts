@@ -12,3 +12,9 @@ export { MetaStepDetail } from "../features/ops/MetaStepDetail";
 export { Help } from "../features/ops/Help";
 export { createOpsApi, setActiveOpsApi, coreOpsApi } from "../api/ops";
 export { LocalShell, bootstrapLocalTheme } from "../local/LocalShell";
+export {
+    CloudPipelineApp,
+    createOpsApiFromBase,
+    readCloudMountConfig,
+} from "../cloud/CloudPipelineApp";
+export type { CloudMountConfig } from "../cloud/CloudPipelineApp";

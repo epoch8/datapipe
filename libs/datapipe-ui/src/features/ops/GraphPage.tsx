@@ -1,5 +1,5 @@
 import React from "react";
-import { Segmented, Spin } from "antd";
+import { Spin } from "antd";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { opsApi, getRefreshIntervalMs } from "../../api/client";
 import { ApiErrorAlert } from "../../components/ApiErrorAlert";
@@ -24,7 +24,8 @@ import {
 
 /**
  * Cloud Ops graph page: label chrome + pipeline DAG against `/api/v1alpha3/graph`.
- * Runs chrome from the full observability UI is omitted.
+ * Labels + layout controls live in the right inspector column so the DAG owns
+ * the full left height.
  */
 export function GraphPage() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -124,8 +125,73 @@ export function GraphPage() {
 
     const title = "Pipeline graph";
 
+    const sideChrome = (
+        <>
+            <div className="pipeline-graph-side-labels">
+                {detail ? (
+                    <PipelineLabelGraphOverview
+                        stages={detail.stages}
+                        stageEdges={detail.stage_edges}
+                        labelGraph={detail.label_graph}
+                        availableLabelKeys={availableKeys}
+                        labelKey={labelKey}
+                        selectedLabel={stage}
+                        mode="compact"
+                        onLabelKeyChange={setLabelKey}
+                        onLabelSelect={selectGraphLabel}
+                        onLabelClear={clearLabelFocus}
+                    />
+                ) : (
+                    <div className="pipeline-graph-side-labels-loading">
+                        <Spin size="small" />
+                    </div>
+                )}
+            </div>
+            <div className="pipeline-graph-side-chrome-title">
+                <span
+                    className="pipeline-card-title-icon"
+                    dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
+                />
+                <span>{title}</span>
+            </div>
+            {stage ? (
+                <div
+                    className="pipeline-card-label-badge pipeline-graph-side-chrome-badge"
+                    title={`${labelKey}=${stage}`}
+                >
+                    <span className="pipeline-card-label-badge-key">{labelKey}</span>
+                    <span className="pipeline-card-label-badge-value">{stage}</span>
+                    <button
+                        type="button"
+                        className="pipeline-card-label-badge-clear"
+                        onClick={clearLabelFocus}
+                        aria-label="Clear label focus"
+                    >
+                        ×
+                    </button>
+                </div>
+            ) : null}
+            <nav className="pipeline-graph-side-chrome-layouts" aria-label="Graph layout">
+                {FLOW_LAYOUT_SEGMENTED_OPTIONS.map((opt) => (
+                    <button
+                        key={opt.value}
+                        type="button"
+                        className={
+                            flowLayout === opt.value
+                                ? "pipeline-graph-layout-link active"
+                                : "pipeline-graph-layout-link"
+                        }
+                        onClick={() => setFlowLayout(opt.value)}
+                    >
+                        {opt.label}
+                    </button>
+                ))}
+            </nav>
+        </>
+    );
+
     return (
-        <div className="graph-page">
+        <div className="graph-page graph-page-dag-first">
             <PageHeader
                 breadcrumbs={[
                     { label: "General", href: "/" },
@@ -140,70 +206,7 @@ export function GraphPage() {
                     <ApiErrorAlert error={error} />
                 </div>
             ) : null}
-            <div className="graph-page-overview">
-                <div className="graph-page-overview-main">
-                    {detail ? (
-                        <PipelineLabelGraphOverview
-                            stages={detail.stages}
-                            stageEdges={detail.stage_edges}
-                            labelGraph={detail.label_graph}
-                            availableLabelKeys={availableKeys}
-                            labelKey={labelKey}
-                            selectedLabel={stage}
-                            mode="compact"
-                            onLabelKeyChange={setLabelKey}
-                            onLabelSelect={selectGraphLabel}
-                            onLabelClear={clearLabelFocus}
-                        />
-                    ) : (
-                        <div
-                            style={{
-                                display: "flex",
-                                justifyContent: "center",
-                                alignItems: "center",
-                                minHeight: 180,
-                            }}
-                        >
-                            <Spin />
-                        </div>
-                    )}
-                </div>
-            </div>
-            <div className="pipeline-card">
-                <div className="pipeline-card-header">
-                    <div className="pipeline-card-header-left">
-                        <div className="pipeline-card-title">
-                            <span
-                                className="pipeline-card-title-icon"
-                                dangerouslySetInnerHTML={{ __html: workflowIconSvg }}
-                            />
-                            {title}
-                            {stage ? (
-                                <span
-                                    className="pipeline-card-label-badge"
-                                    title={`${labelKey}=${stage}`}
-                                >
-                                    <span className="pipeline-card-label-badge-key">{labelKey}</span>
-                                    <span className="pipeline-card-label-badge-value">{stage}</span>
-                                    <button
-                                        type="button"
-                                        className="pipeline-card-label-badge-clear"
-                                        onClick={clearLabelFocus}
-                                        aria-label="Clear label focus"
-                                    >
-                                        ×
-                                    </button>
-                                </span>
-                            ) : null}
-                        </div>
-                        <Segmented
-                            size="small"
-                            value={flowLayout}
-                            options={[...FLOW_LAYOUT_SEGMENTED_OPTIONS]}
-                            onChange={(value) => setFlowLayout(String(value))}
-                        />
-                    </div>
-                </div>
+            <div className="pipeline-card pipeline-card-graph-fill">
                 <div className="pipeline-card-body">
                     <PipelineGraphAgentOnly
                         labelFilter={stage}
@@ -215,6 +218,7 @@ export function GraphPage() {
                         flowLayout={flowLayout}
                         refreshIntervalMs={0}
                         graphRefreshToken={graphRefreshToken}
+                        sideChrome={sideChrome}
                     />
                 </div>
             </div>

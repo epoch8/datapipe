@@ -479,6 +479,24 @@
     flex-direction: column;
 }
 
+/* Graph page: no top header strip — chrome sits in the right inspector column. */
+.graph-page .pipeline-card-graph-fill > .pipeline-card-body {
+    flex: 1 1 0%;
+    min-height: 0;
+    height: 100%;
+}
+
+/* DAG-first layout: no top label strip; card fills the page under the header. */
+.graph-page.graph-page-dag-first {
+    gap: 0;
+}
+
+.graph-page.graph-page-dag-first > .pipeline-card-graph-fill {
+    flex: 1 1 0%;
+    min-height: 0;
+    margin-top: 0;
+}
+
 .pipeline-card-header {
     box-sizing: border-box;
     height: 76px;

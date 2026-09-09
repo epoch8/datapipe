@@ -17,6 +17,8 @@ type NodeInspectorPanelProps = {
     onClose: () => void;
     onNavigateToNode?: (nodeId: string) => void;
     onOpenDetails?: () => void;
+    /** Title / layout controls above node details. */
+    chrome?: React.ReactNode;
 };
 
 function InspectorEmptyState() {
@@ -40,6 +42,7 @@ export function NodeInspectorPanel({
     onClose,
     onNavigateToNode,
     onOpenDetails,
+    chrome,
 }: NodeInspectorPanelProps) {
     return (
         <aside
@@ -52,6 +55,7 @@ export function NodeInspectorPanel({
                 aria-orientation="vertical"
                 onMouseDown={onHandleMouseDown}
             />
+            {chrome ? <div className="pipeline-graph-side-chrome">{chrome}</div> : null}
             <div className="node-inspector-panel-content">
                 {!inspector ? (
                     <InspectorEmptyState />

@@ -180,6 +180,43 @@
     color: var(--dp-text-primary, #e8eef7);
 }
 
+[data-ui-theme="dark"] .pipeline-graph-side-chrome,
+[data-theme="dark"] .pipeline-graph-side-chrome,
+[data-bs-theme="dark"] .pipeline-graph-side-chrome {
+    border-bottom-color: var(--dp-border-subtle, #243044);
+}
+
+[data-ui-theme="dark"] .pipeline-graph-side-labels,
+[data-theme="dark"] .pipeline-graph-side-labels,
+[data-bs-theme="dark"] .pipeline-graph-side-labels {
+    border-color: var(--dp-border-subtle, #243044);
+    background: rgba(15, 23, 42, 0.65);
+}
+
+[data-ui-theme="dark"] .pipeline-graph-side-chrome-title,
+[data-theme="dark"] .pipeline-graph-side-chrome-title,
+[data-bs-theme="dark"] .pipeline-graph-side-chrome-title {
+    color: var(--dp-text-primary, #e8eef7);
+}
+
+[data-ui-theme="dark"] .pipeline-graph-layout-link,
+[data-theme="dark"] .pipeline-graph-layout-link,
+[data-bs-theme="dark"] .pipeline-graph-layout-link {
+    color: var(--dp-text-secondary, #94a3b8);
+}
+
+[data-ui-theme="dark"] .pipeline-graph-layout-link:hover,
+[data-theme="dark"] .pipeline-graph-layout-link:hover,
+[data-bs-theme="dark"] .pipeline-graph-layout-link:hover {
+    color: var(--dp-text-primary, #e8eef7);
+}
+
+[data-ui-theme="dark"] .pipeline-graph-layout-link.active,
+[data-theme="dark"] .pipeline-graph-layout-link.active,
+[data-bs-theme="dark"] .pipeline-graph-layout-link.active {
+    color: var(--dp-accent, #38bdf8);
+}
+
 [data-ui-theme="dark"] .pipeline-stage-sidebar,
 [data-theme="dark"] .pipeline-stage-sidebar,
 [data-bs-theme="dark"] .pipeline-stage-sidebar {

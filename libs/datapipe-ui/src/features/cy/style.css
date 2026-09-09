@@ -500,6 +500,112 @@
     padding: 20px 20px 28px;
 }
 
+/* Graph title + layout links live in the inspector column so the DAG gets full height. */
+.pipeline-graph-side-chrome {
+    flex: 0 0 auto;
+    padding: 10px 12px 10px;
+    border-bottom: 1px solid var(--dp-border-subtle, #e6ebf1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    max-height: min(52vh, 420px);
+    overflow: hidden;
+}
+
+.pipeline-graph-side-labels {
+    min-width: 0;
+    max-height: min(34vh, 280px);
+    overflow: auto;
+    border: 1px solid var(--dp-border-subtle, #e6ebf1);
+    border-radius: 8px;
+    background: var(--dp-bg-muted, #f6f8fb);
+}
+
+.pipeline-graph-side-labels-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 72px;
+}
+
+.pipeline-graph-side-labels .pipeline-label-overview-compact {
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+}
+
+.pipeline-graph-side-labels .pipeline-label-overview-compact .ant-card-body {
+    padding: 8px !important;
+}
+
+.pipeline-graph-side-labels .pipeline-label-overview-compact .pipeline-label-graph-canvas {
+    zoom: 0.55;
+}
+
+.pipeline-graph-side-labels .pipeline-label-overview-compact .pipeline-label-graph-scroll {
+    overflow: auto;
+    max-height: none;
+}
+
+.pipeline-graph-side-chrome-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.25;
+    color: var(--dp-text-primary, #0f1b2d);
+    min-width: 0;
+}
+
+.pipeline-graph-side-chrome-title .pipeline-card-title-icon {
+    flex-shrink: 0;
+    transform: scale(0.8);
+    transform-origin: left center;
+}
+
+.pipeline-graph-side-chrome-badge {
+    margin-left: 0;
+    max-width: 100%;
+    align-self: flex-start;
+    padding: 3px 6px 3px 8px;
+    font-size: 12px;
+}
+
+.pipeline-graph-side-chrome-layouts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 10px;
+}
+
+.pipeline-graph-layout-link {
+    appearance: none;
+    background: transparent;
+    border: none;
+    padding: 2px 0;
+    margin: 0;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dp-text-muted, #667085);
+    cursor: pointer;
+    text-align: left;
+}
+
+.pipeline-graph-layout-link:hover {
+    color: var(--dp-text-primary, #0f1b2d);
+}
+
+.pipeline-graph-layout-link.active {
+    color: var(--dp-accent, #1677ff);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 .node-inspector-panel-header {
     display: flex;
     align-items: flex-start;

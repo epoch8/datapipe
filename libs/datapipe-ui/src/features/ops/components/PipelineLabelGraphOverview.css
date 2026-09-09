@@ -86,6 +86,16 @@
     overflow-y: hidden;
 }
 
+/* Compact strip on Graph: ~70% height + horizontal scroll. */
+.pipeline-label-overview-compact .pipeline-label-graph-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.pipeline-label-overview-compact .pipeline-label-graph-canvas {
+    zoom: 0.7;
+}
+
 .pipeline-label-graph-canvas {
     position: relative;
     min-height: 80px;

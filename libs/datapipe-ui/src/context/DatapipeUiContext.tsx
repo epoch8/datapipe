@@ -32,11 +32,21 @@ export function DatapipeUiProvider({
     children: React.ReactNode;
 }) {
     React.useEffect(() => {
+        // CloudShell: Django owns <html> theme; only annotate the island mount.
+        if (value.mode === "cloud") {
+            const mount = document.getElementById("datapipe-ui-root");
+            if (mount) {
+                mount.setAttribute("data-ui-theme", value.theme);
+                mount.setAttribute("data-theme", value.theme);
+                mount.classList.add("datapipe-cloud-island");
+            }
+            return;
+        }
         const root = document.documentElement;
         root.setAttribute("data-ui-theme", value.theme);
         root.setAttribute("data-theme", value.theme);
         root.setAttribute("data-bs-theme", value.theme);
-    }, [value.theme]);
+    }, [value.theme, value.mode]);
 
     return <DatapipeUiContext.Provider value={value}>{children}</DatapipeUiContext.Provider>;
 }

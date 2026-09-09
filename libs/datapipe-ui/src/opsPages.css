@@ -56,10 +56,18 @@
 
 .ops-page-header-main {
     display: flex;
-    justify-content: flex-start;
-    align-items: flex-start;
-    gap: 24px;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
     flex-wrap: wrap;
+}
+
+.ops-page-header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+    flex: 1 1 auto;
 }
 
 .ops-page-title-row {
@@ -94,7 +102,8 @@
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-    margin-top: 12px;
+    margin-top: 0;
+    flex: 0 0 auto;
 }
 
 .ops-status-chip {

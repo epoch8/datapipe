@@ -1,105 +1,144 @@
 .dp-local-shell {
-  /* LocalShell owns viewport layout; disable CRA ops zoom that leaves a white gutter. */
   --dp-ui-scale: 1;
+  --dp-local-sidebar-width: 200px;
   min-height: 100vh;
   height: 100vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   background: var(--dp-bg, #f4f7fb);
   color: var(--dp-text, #0f1b2d);
   font-family: var(--dp-font, "DM Sans", sans-serif);
 }
 
-.dp-local-topbar {
-  flex: 0 0 auto;
+[data-ui-theme="dark"].dp-local-shell,
+[data-theme="dark"].dp-local-shell {
+  background: var(--dp-bg, #0b1220);
+  color: var(--dp-text, #e8eef7);
+}
+
+/* ---- Left sidebar (link-style nav) ---- */
+.dp-local-sidebar {
+  flex: 0 0 var(--dp-local-sidebar-width);
+  width: var(--dp-local-sidebar-width);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.65rem 1.25rem;
-  border-bottom: 1px solid var(--dp-border, #d5dee8);
-  background: var(--dp-bg-elevated, #fff);
-}
-
-.dp-local-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-}
-
-.dp-local-logo {
-  font-size: 1.1rem;
-  color: var(--dp-accent, #0d9488);
-}
-
-.dp-local-pipeline-chip {
-  margin-left: 0.35rem;
-}
-
-.dp-local-topbar-right {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 0.5rem;
-}
-
-.dp-api-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  color: var(--dp-text-muted, #5b6b7c);
-}
-
-.dp-api-status .dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: #ef4444;
-}
-
-.dp-api-status.ok .dot {
-  background: #22c55e;
-}
-
-.dp-local-subheader {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 1rem;
-  align-items: center;
-  padding: 1rem 1.25rem 0.75rem;
-  border-bottom: 1px solid var(--dp-border, #d5dee8);
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--dp-border, #d5dee8);
   background: var(--dp-bg-elevated, #fff);
+  min-height: 0;
 }
 
-.dp-local-title {
-  margin: 0;
-  font-size: 1.55rem;
-  font-weight: 700;
+[data-ui-theme="dark"] .dp-local-sidebar,
+[data-theme="dark"] .dp-local-sidebar {
+  border-right-color: var(--dp-border, #243147);
+  background: linear-gradient(180deg, #0f172a 0%, #111b2e 100%);
+}
+
+.dp-local-sidebar-brand {
+  padding: 0.35rem 0.75rem 0.85rem;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--dp-text, #0f1b2d);
 }
 
-.dp-local-tabs {
-  display: inline-flex;
-  gap: 0.35rem;
-  padding: 0.2rem;
-  border-radius: 999px;
-  background: var(--dp-bg-muted, #e8eef6);
+[data-ui-theme="dark"] .dp-local-sidebar-brand,
+[data-theme="dark"] .dp-local-sidebar-brand {
+  color: #f8fafc;
 }
 
-.dp-local-tab {
-  padding: 0.35rem 0.9rem;
-  border-radius: 999px;
+.dp-local-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dp-local-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 10px;
   color: var(--dp-text-muted, #5b6b7c);
   text-decoration: none;
   font-weight: 600;
+  font-size: 0.95rem;
 }
 
-.dp-local-tab.active,
-.dp-local-tab:hover {
-  background: var(--dp-bg, #f4f7fb);
-  color: var(--dp-accent, #0d9488);
+.dp-local-nav-link:hover {
+  color: var(--dp-text, #0f1b2d);
+  background: var(--dp-bg-muted, #e8eef6);
+}
+
+.dp-local-nav-link.active {
+  color: var(--dp-text, #0f1b2d);
+  background: rgba(22, 119, 255, 0.12);
+}
+
+.dp-local-nav-link.active::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: #1677ff;
+}
+
+[data-ui-theme="dark"] .dp-local-nav-link,
+[data-theme="dark"] .dp-local-nav-link {
+  color: #cbd5e1;
+}
+
+[data-ui-theme="dark"] .dp-local-nav-link:hover,
+[data-theme="dark"] .dp-local-nav-link:hover {
+  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+[data-ui-theme="dark"] .dp-local-nav-link.active,
+[data-theme="dark"] .dp-local-nav-link.active {
+  color: #f8fafc;
+  background: rgba(59, 130, 246, 0.22);
+}
+
+[data-ui-theme="dark"] .dp-local-nav-link.active::after,
+[data-theme="dark"] .dp-local-nav-link.active::after {
+  background: #38bdf8;
+}
+
+.dp-local-sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.5rem 0.35rem 0.15rem;
+  border-top: 1px solid var(--dp-border, #d5dee8);
+  margin-top: 0.5rem;
+}
+
+[data-ui-theme="dark"] .dp-local-sidebar-footer,
+[data-theme="dark"] .dp-local-sidebar-footer {
+  border-top-color: var(--dp-border, #243147);
+}
+
+.dp-local-theme-toggle {
+  color: inherit !important;
+}
+
+.dp-local-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .dp-local-main {
@@ -112,7 +151,8 @@
 }
 
 .dp-local-main > .connectivity-banner,
-.dp-local-main > .ant-alert {
+.dp-local-main > .ant-alert,
+.dp-local-body > .ant-alert {
   flex: 0 0 auto;
 }
 
@@ -124,41 +164,55 @@
   overflow: auto;
 }
 
-/* Match OpsShell `.datapipe-content-padded` — without this Overview/Runs hug the left edge. */
 .dp-local-main > .ops-page {
   padding: 24px 44px;
   box-sizing: border-box;
 }
 
-/* Graph needs a flex column so cytoscape gets a real height (not 0). */
 .dp-local-main > .graph-page {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* Same horizontal inset as cloud island / OpsShell graph padding. */
   padding: 0 44px 16px;
   box-sizing: border-box;
 }
 
-/* Mirror cloud workspace.html graph proportions: compact label strip + tall DAG. */
-.dp-local-main > .graph-page > .graph-page-overview {
-  flex: 0 1 22%;
-  max-height: 22%;
-  min-height: 100px;
-  overflow: auto;
-  margin-bottom: 8px;
-  /* No Recent runs column in LocalShell GraphPage — don't reserve 292px. */
-  padding-right: 0;
+/* Title row: actions sit to the right of “Pipeline graph”, same line. */
+.dp-local-shell .ops-page-header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  flex-wrap: wrap;
 }
 
-.dp-local-main > .graph-page > .graph-page-overview .graph-page-overview-main {
+.dp-local-shell .ops-page-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.dp-local-shell .ops-page-header-actions {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+/* Label strip: 70% of natural height + horizontal scroll only. */
+.dp-local-main > .graph-page > .graph-page-overview {
+  flex: 0 0 auto;
+  max-height: none;
   min-height: 0;
-  max-height: 100%;
+  overflow: hidden;
+  margin-bottom: 8px;
+  padding-right: 0;
 }
 
 .dp-local-main > .graph-page .pipeline-label-overview-compact {
   margin-bottom: 0 !important;
-  max-height: 100%;
+  overflow: hidden;
 }
 
 .dp-local-main > .graph-page .pipeline-label-overview-compact .ant-card-body {
@@ -166,14 +220,16 @@
 }
 
 .dp-local-main > .graph-page .pipeline-label-overview-compact .pipeline-label-graph-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.dp-local-main > .graph-page .pipeline-label-overview-compact .pipeline-label-graph-canvas {
   zoom: 0.7;
-  max-height: 100%;
-  overflow-x: auto !important;
-  overflow-y: auto !important;
 }
 
 .dp-local-main > .graph-page > .pipeline-card {
-  flex: 1 1 78% !important;
+  flex: 1 1 0% !important;
   min-height: 0 !important;
   height: auto !important;
   display: flex;
@@ -206,8 +262,24 @@
   overflow: hidden !important;
 }
 
-@media (max-width: 960px) {
-  .dp-local-subheader {
-    grid-template-columns: 1fr;
+@media (max-width: 720px) {
+  .dp-local-shell {
+    flex-direction: column;
+  }
+
+  .dp-local-sidebar {
+    flex: 0 0 auto;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--dp-border, #d5dee8);
+  }
+
+  .dp-local-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .dp-local-nav-link.active::after {
+    display: none;
   }
 }

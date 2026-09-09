@@ -28,7 +28,8 @@ import { attachGraphInteractions, MAX_ZOOM, MIN_ZOOM } from "./graphInteractions
 import { fitGraphViewport } from "./incrementalLayout";
 import { initHtmlNodeLabels } from "./htmlNodeLabels";
 import { Alert, AlertProps, Spin } from "antd";
-import { apiFetch, getApiErrorMessage } from "../../api/http";
+import { fetchGraph } from "../../api/graph";
+import { getApiErrorMessage } from "../../api/http";
 import {
     captureGraphSessionState,
     loadGraphSessionState,
@@ -41,11 +42,12 @@ import { resolveFlowLayout } from "../../types/pipelineGraph";
 
 Cytoscape.use(dagre);
 
+/** Stable session/cache key (not the HTTP URL — cloud uses apiBase via fetchGraph). */
 function buildGraphUrl(stageFilter?: string | null, labelKey?: string | null): string {
-    const base = (process.env["REACT_APP_GET_GRAPH_URL"] as string) || "/api/v1alpha3/graph";
+    const base = "graph";
     const params = new URLSearchParams();
     if (stageFilter) params.set("stage", stageFilter);
-    if (stageFilter && labelKey && labelKey !== "stage") params.set("label_key", labelKey);
+    if (labelKey && labelKey !== "stage") params.set("label_key", labelKey);
     const query = params.toString();
     if (!query) return base;
     const joiner = base.includes("?") ? "&" : "?";
@@ -185,6 +187,7 @@ function PipelineGraphView({
     refreshIntervalMs = 0,
     pipelineId: pipelineIdProp,
     graphRefreshToken = 0,
+    sideChrome,
 }: PipelineGraphProps) {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
@@ -219,10 +222,10 @@ function PipelineGraphView({
         dragging: panelDragging,
         onHandleMouseDown: onPanelResize,
     } = useResizableWidth({
-        initial: 360,
-        min: 260,
+        initial: sideChrome ? 420 : 360,
+        min: 280,
         max: inspectorMaxWidth,
-        storageKey: "dp.graphInspectorWidth",
+        storageKey: sideChrome ? "dp.graphInspectorWidth.side" : "dp.graphInspectorWidth",
         edge: "left",
     });
 
@@ -450,12 +453,10 @@ function PipelineGraphView({
             }
 
             try {
-                const response = await apiFetch(graphUrl);
-                if (!response.ok) throw new Error(`Graph request failed: ${response.status}`);
-                const data = await response.json();
+                const data = await fetchGraph(stageFilter, labelKey);
                 if (cancelled) return;
                 loadedUrlRef.current = graphUrl;
-                setRawGraph(data);
+                setRawGraph(data as GraphData);
             } catch (error) {
                 if (!cancelled) {
                     if (cy) {
@@ -482,7 +483,7 @@ function PipelineGraphView({
             cancelled = true;
             clearInterval(timer);
         };
-    }, [graphUrl, refreshIntervalMs, cy, graphRefreshToken]);
+    }, [graphUrl, stageFilter, labelKey, refreshIntervalMs, cy, graphRefreshToken]);
 
     useEffect(() => {
         if (!cy || !rawGraph || loading) return;
@@ -800,6 +801,7 @@ function PipelineGraphView({
                 onHandleMouseDown={onPanelResize}
                 onClose={() => setInspector(null)}
                 onNavigateToNode={navigateToInspectorNode}
+                chrome={sideChrome}
                 onOpenDetails={
                     inspector
                         ? () => {

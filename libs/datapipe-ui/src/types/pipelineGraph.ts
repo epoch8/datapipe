@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export type GraphRunStep = {
     step_name: string;
     status: string;
@@ -40,6 +42,8 @@ export type PipelineGraphProps = {
     refreshIntervalMs?: number;
     pipelineId?: string | null;
     graphRefreshToken?: number;
+    /** Chrome above the inspector (title, layout controls) — frees graph vertical space. */
+    sideChrome?: ReactNode;
 };
 
 export function resolveFlowLayout(

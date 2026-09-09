@@ -1,12 +1,13 @@
 import React from "react";
 import {
+    ApartmentOutlined,
+    DashboardOutlined,
     HistoryOutlined,
-    QuestionCircleOutlined,
-    ReloadOutlined,
-    BulbOutlined,
+    MoonOutlined,
+    SunOutlined,
 } from "@ant-design/icons";
-import { Button, Space, Typography } from "antd";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Button, Space } from "antd";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { opsApi } from "../api/client";
 import { ApiErrorAlert } from "../components/ApiErrorAlert";
 import { ConnectivityBanner } from "../components/ConnectivityBanner";
@@ -14,8 +15,8 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useDatapipeUiConfig } from "../context/DatapipeUiContext";
 import type { Capabilities } from "../types/ops";
 import { applyUiTheme, readStoredUiTheme } from "@datapipe/ui-core";
-
-const { Text } = Typography;
+import { LocalChromeActionsProvider } from "./LocalChromeActions";
+import "./localShell.css";
 
 function matchTab(pathname: string): "overview" | "graph" | "runs" {
     if (pathname.startsWith("/runs")) return "runs";
@@ -31,8 +32,7 @@ function matchTab(pathname: string): "overview" | "graph" | "runs" {
 }
 
 /**
- * Local host chrome for datapipe-ui (mockups 8–9): Datapipe Ops / LOCAL,
- * API status, theme/lang/help, Overview/Graph/Runs tabs.
+ * Local host chrome: left sidebar nav (Overview / Graph / Runs) + shared screens.
  */
 export function LocalShell() {
     const location = useLocation();
@@ -40,17 +40,9 @@ export function LocalShell() {
     const config = useDatapipeUiConfig();
     const [capabilities, setCapabilities] = React.useState<Capabilities | null>(config.capabilities);
     const [capabilitiesError, setCapabilitiesError] = React.useState<unknown>(null);
-    const [apiHost, setApiHost] = React.useState("localhost");
-    const [connected, setConnected] = React.useState(true);
     const [theme, setTheme] = React.useState<"light" | "dark">(config.theme);
     const [starting, setStarting] = React.useState(false);
     const tab = matchTab(location.pathname);
-
-    React.useEffect(() => {
-        if (typeof window !== "undefined") {
-            setApiHost(window.location.host || "localhost");
-        }
-    }, []);
 
     React.useEffect(() => {
         opsApi
@@ -58,12 +50,8 @@ export function LocalShell() {
             .then((c) => {
                 setCapabilities(c);
                 setCapabilitiesError(null);
-                setConnected(true);
             })
-            .catch((e) => {
-                setCapabilitiesError(e);
-                setConnected(false);
-            });
+            .catch((e) => setCapabilitiesError(e));
     }, [location.pathname]);
 
     const canStart = Boolean(
@@ -76,11 +64,11 @@ export function LocalShell() {
         applyUiTheme(next);
     };
 
-    const onRefresh = () => {
+    const onRefreshPage = React.useCallback(() => {
         navigate(0);
-    };
+    }, [navigate]);
 
-    const onRunSteps = () => {
+    const onRunSteps = React.useCallback(() => {
         if (!canStart) return;
         setStarting(true);
         opsApi
@@ -88,34 +76,54 @@ export function LocalShell() {
             .then((started) => navigate(config.linkTo(`runs/${started.run_id}`)))
             .catch((e) => setCapabilitiesError(e))
             .finally(() => setStarting(false));
-    };
+    }, [canStart, config, navigate]);
+
+    const chromeActions = React.useMemo(
+        () => ({ onRefreshPage, onRunSteps, canStart, starting }),
+        [onRefreshPage, onRunSteps, canStart, starting],
+    );
+
+    const navClass = (active: boolean) => `dp-local-nav-link${active ? " active" : ""}`;
 
     return (
-        <div className="dp-local-shell" data-ui-theme={theme}>
+        <div className="dp-local-shell" data-ui-theme={theme} data-theme={theme}>
             <ConnectivityBanner />
-            <header className="dp-local-topbar">
-                <div className="dp-local-brand">
-                    <span className="dp-local-logo" aria-hidden>
-                        ▣
-                    </span>
-                    <strong>Datapipe Ops</strong>
-                    <span className="dp-badge-local">LOCAL</span>
-                    <Text type="secondary" className="dp-local-pipeline-chip">
-                        {config.pipelineName}
-                    </Text>
-                </div>
-                <div className="dp-local-topbar-right">
-                    <span className={`dp-api-status${connected ? " ok" : ""}`}>
-                        <span className="dot" />
-                        {connected ? "API подключён" : "API недоступен"} · {apiHost}
-                    </span>
+            <aside className="dp-local-sidebar" aria-label="Pipeline navigation">
+                <div className="dp-local-sidebar-brand">Datapipe Ops</div>
+                <nav className="dp-local-nav" aria-label="Pipeline sections">
+                    <NavLink
+                        to={config.linkTo("")}
+                        end
+                        className={() => navClass(tab === "overview")}
+                    >
+                        <DashboardOutlined aria-hidden />
+                        <span>Overview</span>
+                    </NavLink>
+                    <NavLink
+                        to={config.linkTo("graph")}
+                        className={() => navClass(tab === "graph")}
+                    >
+                        <ApartmentOutlined aria-hidden />
+                        <span>Graph</span>
+                    </NavLink>
+                    <NavLink
+                        to={config.linkTo("runs")}
+                        className={() => navClass(tab === "runs")}
+                    >
+                        <HistoryOutlined aria-hidden />
+                        <span>Runs</span>
+                    </NavLink>
+                </nav>
+                <div className="dp-local-sidebar-footer">
                     <Button
                         type="text"
-                        icon={<BulbOutlined />}
+                        className="dp-local-theme-toggle"
+                        icon={theme === "dark" ? <SunOutlined /> : <MoonOutlined />}
                         onClick={onToggleTheme}
-                        aria-label="Toggle theme"
+                        aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+                        title={theme === "dark" ? "Светлая тема" : "Тёмная тема"}
                     />
-                    <Space size={4} className="dp-lang-toggle">
+                    <Space size={0} className="dp-local-lang">
                         <Button size="small" type="link">
                             RU
                         </Button>
@@ -123,69 +131,19 @@ export function LocalShell() {
                             EN
                         </Button>
                     </Space>
-                    <Link to={config.linkTo("help")}>
-                        <Button type="text" icon={<QuestionCircleOutlined />}>
-                            Справка
-                        </Button>
-                    </Link>
                 </div>
-            </header>
+            </aside>
 
-            <div className="dp-local-subheader">
-                <div>
-                    <h1 className="dp-local-title">{config.pipelineName}</h1>
-                    <Text type="secondary">Локальный пайплайн · {config.pipelineName}</Text>
-                </div>
-                <nav className="dp-local-tabs" aria-label="Pipeline sections">
-                    <NavLink
-                        to={config.linkTo("")}
-                        end
-                        className={({ isActive }) =>
-                            `dp-local-tab${isActive || tab === "overview" ? " active" : ""}`
-                        }
-                    >
-                        Overview
-                    </NavLink>
-                    <NavLink
-                        to={config.linkTo("graph")}
-                        className={({ isActive }) =>
-                            `dp-local-tab${isActive || tab === "graph" ? " active" : ""}`
-                        }
-                    >
-                        Graph
-                    </NavLink>
-                    <NavLink
-                        to={config.linkTo("runs")}
-                        className={({ isActive }) =>
-                            `dp-local-tab${isActive || tab === "runs" ? " active" : ""}`
-                        }
-                    >
-                        <HistoryOutlined /> Runs
-                    </NavLink>
-                </nav>
-                <Space>
-                    <Button icon={<ReloadOutlined />} onClick={onRefresh}>
-                        Обновить
-                    </Button>
-                    <Button
-                        type="primary"
-                        className="dp-btn-primary"
-                        disabled={!canStart}
-                        loading={starting}
-                        onClick={onRunSteps}
-                    >
-                        Запустить шаги
-                    </Button>
-                </Space>
+            <div className="dp-local-body">
+                {capabilitiesError ? <ApiErrorAlert error={capabilitiesError} /> : null}
+                <LocalChromeActionsProvider value={chromeActions}>
+                    <main className="dp-local-main">
+                        <ErrorBoundary key={location.pathname}>
+                            <Outlet />
+                        </ErrorBoundary>
+                    </main>
+                </LocalChromeActionsProvider>
             </div>
-
-            {capabilitiesError ? <ApiErrorAlert error={capabilitiesError} /> : null}
-
-            <main className="dp-local-main">
-                <ErrorBoundary key={location.pathname}>
-                    <Outlet />
-                </ErrorBoundary>
-            </main>
         </div>
     );
 }

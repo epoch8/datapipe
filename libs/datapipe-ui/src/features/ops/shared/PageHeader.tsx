@@ -5,6 +5,7 @@ import { ReloadOutlined, StarOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import moment, { Moment } from "moment";
 import { useOptionalDatapipeUiConfig } from "../../../context/DatapipeUiContext";
+import { useLocalChromeActions } from "../../../local/LocalChromeActions";
 
 type StatusChip = { label: string; color?: string; variant?: "success" | "purple" | "default" };
 
@@ -48,9 +49,16 @@ export function PageHeader({
     extra,
 }: Props) {
     const ui = useOptionalDatapipeUiConfig();
+    const localChrome = useLocalChromeActions();
     const cloud = ui?.mode === "cloud" || isCloudHost();
     const showDateRange = Boolean(dateRange && onDateRangeChange);
-    const showActions = showDateRange || Boolean(onRefresh) || Boolean(primaryAction) || Boolean(extra);
+    const showShellActions = Boolean(localChrome);
+    const showActions =
+        showDateRange ||
+        Boolean(onRefresh) ||
+        Boolean(primaryAction) ||
+        Boolean(extra) ||
+        showShellActions;
     const [actionsSlot, setActionsSlot] = React.useState<HTMLElement | null>(() =>
         cloud ? cloudActionsSlot() : null,
     );
@@ -74,6 +82,22 @@ export function PageHeader({
                     className="ops-date-range"
                 />
             )}
+            {localChrome ? (
+                <Button icon={<ReloadOutlined />} onClick={localChrome.onRefreshPage}>
+                    Обновить
+                </Button>
+            ) : null}
+            {localChrome ? (
+                <Button
+                    type="primary"
+                    className="dp-btn-primary"
+                    disabled={!localChrome.canStart}
+                    loading={localChrome.starting}
+                    onClick={localChrome.onRunSteps}
+                >
+                    Запустить шаги
+                </Button>
+            ) : null}
             {onRefresh && (
                 <Button icon={<ReloadOutlined />} onClick={onRefresh}>
                     Refresh
@@ -146,8 +170,8 @@ export function PageHeader({
                             ))}
                         </Space>
                     )}
-                    {actions}
                 </div>
+                {actions}
             </div>
         </div>
     );
