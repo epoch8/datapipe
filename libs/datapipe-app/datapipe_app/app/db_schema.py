@@ -125,3 +125,17 @@ def create_observability_tables_hook(app: DatapipeApp, dbconn: DBConn) -> None:
             dbconn,
             tables=tables,
         )
+
+    _ensure_clickhouse_run_logs_table(app)
+
+
+def _ensure_clickhouse_run_logs_table(app: DatapipeApp) -> None:
+    """Create ClickHouse run-log table when configured (part of ``db create-all``)."""
+    from datapipe_app.observability.run_logs.store import ClickHouseRunLogStore
+
+    backend = getattr(app, "run_logs_backend", None)
+    if backend is None:
+        return
+    store = getattr(backend, "store", None)
+    if isinstance(store, ClickHouseRunLogStore):
+        store.ensure_table()
