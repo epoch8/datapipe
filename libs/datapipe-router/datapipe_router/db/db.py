@@ -1,0 +1,193 @@
+
+
+
+
+
+
+
+class TableStoreDB(TableStore):
+    caps = TableStoreCaps(
+        supports_delete=True,
+        supports_get_schema=True,
+        supports_read_all_rows=True,
+        supports_read_nonexistent_rows=True,
+        supports_read_meta_pseudo_df=True,
+    )
+
+    def __init__(
+        self,
+        dbconn: DBConn | str,
+        name: str | None = None,
+        data_sql_schema: list[Column] | None = None,
+        create_table: bool = False,
+        orm_table: OrmTable | None = None,
+    ) -> None:
+        if isinstance(dbconn, str):
+            self.dbconn = DBConn(dbconn)
+        else:
+            self.dbconn = dbconn
+
+        if orm_table is not None:
+            assert name is None, "name should be None if orm_table is provided"
+            assert data_sql_schema is None, "data_sql_schema should be None if orm_table is provided"
+
+            orm_table__table = orm_table.__table__  # type: ignore
+            self.data_table = cast(Table, orm_table__table)
+
+            self.name = self.data_table.name
+
+            self.data_sql_schema = [
+                Column(
+                    column.name,
+                    column.type,
+                    primary_key=column.primary_key,
+                    nullable=column.nullable,
+                    unique=column.unique,
+                    *column.constraints,
+                )
+                for column in self.data_table.columns
+            ]
+            self.data_keys = [column.name for column in self.data_sql_schema if not column.primary_key]
+
+        else:
+            assert name is not None, "name should be provided if data_table is not provided"
+            assert data_sql_schema is not None, "data_sql_schema should be provided if data_table is not provided"
+
+            self.name = name
+
+            self.data_sql_schema = data_sql_schema
+
+            self.data_keys = [column.name for column in self.data_sql_schema if not column.primary_key]
+
+            self.data_table = Table(
+                self.name,
+                self.dbconn.sqla_metadata,
+                *[copy.copy(i) for i in self.data_sql_schema],
+                extend_existing=True,
+            )
+
+        if create_table:
+            ensure_db_schema(self.dbconn)
+            self.data_table.create(self.dbconn.con, checkfirst=True)
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return self.__class__, (
+            self.dbconn,
+            self.name,
+            self.data_sql_schema,
+        )
+
+    def get_schema(self) -> DataSchema:
+        return self.data_sql_schema
+
+    def get_primary_schema(self) -> DataSchema:
+        return [column for column in self.data_sql_schema if column.primary_key]
+
+    def get_meta_schema(self) -> MetaSchema:
+        meta_key_prop = MetaKey.get_property_name()
+        return [column for column in self.data_sql_schema if hasattr(column, meta_key_prop)]
+
+    def _chunk_size(self):
+        # Magic number derived empirically. See
+        # https://github.com/epoch8/datapipe/issues/178 for details.
+        #
+        # TODO Investigate deeper how does stack in Postgres work
+        return 5000 // len(self.primary_keys)
+
+    def _chunk_idx_df(self, idx: TAnyDF) -> Iterator[TAnyDF]:
+        """
+        Split IndexDF to chunks acceptable for typical Postgres configuration.
+        See `_chunk_size` for detatils.
+        """
+
+        CHUNK_SIZE = self._chunk_size()
+
+        for chunk_no in range(int(math.ceil(len(idx) / CHUNK_SIZE))):
+            chunk_idx = idx.iloc[chunk_no * CHUNK_SIZE : (chunk_no + 1) * CHUNK_SIZE, :]
+
+            yield cast(TAnyDF, chunk_idx)
+
+    def delete_rows(self, idx: IndexDF) -> None:
+        if idx is None or len(idx.index) == 0:
+            return
+
+        logger.debug(f"Deleting {len(idx.index)} rows from {self.name} data")
+
+        for chunk_idx in self._chunk_idx_df(idx):
+            sql = sql_apply_idx_filter_to_table(delete(self.data_table), self.data_table, self.primary_keys, chunk_idx)
+            with self.dbconn.con.begin() as con:
+                con.execute(sql)
+
+    def insert_rows(self, df: DataDF) -> None:
+        self.update_rows(df)
+
+    def update_rows(self, df: DataDF) -> None:
+        if df.empty:
+            return
+
+        # SQLAlchemy expects Python None for SQL NULL; keep object dtype to avoid
+        # pandas downcasting warnings while preserving scalar values.
+        df_records = df.astype(object)
+        df_records[pd.isna(df_records)] = None
+        records = df_records.to_dict(orient="records")
+
+        with self.dbconn.con.begin() as con:
+            for chunk in chunk_records_for_insert(records):
+                insert_sql = self.dbconn.insert(self.data_table).values(chunk)
+
+                if len(self.data_keys) > 0:
+                    sql = insert_sql.on_conflict_do_update(
+                        index_elements=self.primary_keys,
+                        set_={
+                            col.name: insert_sql.excluded[col.name]
+                            for col in self.data_sql_schema
+                            if not col.primary_key
+                        },
+                    )
+                else:
+                    sql = insert_sql.on_conflict_do_nothing(index_elements=self.primary_keys)
+
+                con.execute(sql)
+
+    # Fix numpy types in IndexDF
+    def _get_sql_param(self, param):
+        return param.item() if hasattr(param, "item") else param
+
+    def read_rows(self, idx: IndexDF | None = None) -> pd.DataFrame:
+        sql = select(*self.data_table.c)
+
+        if idx is not None:
+            if len(idx.index) == 0:
+                # Empty index -> empty result
+                return pd.DataFrame(columns=[column.name for column in self.data_sql_schema])
+
+            res = []
+
+            with self.dbconn.con.begin() as con:
+                for chunk_idx in self._chunk_idx_df(idx):
+                    chunk_sql = sql_apply_idx_filter_to_table(sql, self.data_table, self.primary_keys, chunk_idx)
+                    chunk_df = pd.read_sql_query(chunk_sql, con=con)
+
+                    res.append(chunk_df)
+
+            return pd.concat(res, ignore_index=True)
+
+        else:
+            with self.dbconn.con.begin() as con:
+                return pd.read_sql_query(sql, con=con)
+
+    def read_rows_meta_pseudo_df(
+        self,
+        chunksize: int = 1000,
+        run_config: RunConfig | None = None,
+    ) -> Iterator[DataDF]:
+        sql = select(*self.data_table.c)
+
+        sql = sql_apply_runconfig_filter(sql, self.data_table, self.primary_keys, run_config)
+
+        with self.dbconn.con.execution_options(stream_results=True).begin() as con:
+            yield from pd.read_sql_query(
+                sql,
+                con=con,
+                chunksize=chunksize,
+            )

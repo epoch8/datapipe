@@ -1,0 +1,182 @@
+import React from "react";
+import { createPortal } from "react-dom";
+import { Button, DatePicker, Space, Tag } from "antd";
+import { ReloadOutlined, StarOutlined } from "@ant-design/icons";
+import { Link } from "react-router-dom";
+import moment, { Moment } from "moment";
+import { useOptionalDatapipeUiConfig } from "../../../context/DatapipeUiContext";
+import { useLocalChromeActions } from "../../../local/LocalChromeActions";
+
+type StatusChip = { label: string; color?: string; variant?: "success" | "purple" | "default" };
+
+type Props = {
+    breadcrumbs?: { label: string; href?: string }[];
+    title: string;
+    titleTooltip?: string;
+    subtitle?: string;
+    statusChips?: StatusChip[];
+    dateRange?: [Moment, Moment] | null;
+    onDateRangeChange?: (range: [Moment, Moment] | null) => void;
+    onRefresh?: () => void;
+    primaryAction?: { label: string; onClick?: () => void; href?: string; disabled?: boolean; title?: string };
+    extra?: React.ReactNode;
+};
+
+function isCloudHost(): boolean {
+    try {
+        const raw = (window as unknown as { __DP_PIPELINE__?: { mode?: string } }).__DP_PIPELINE__;
+        return raw?.mode === "cloud";
+    } catch {
+        return false;
+    }
+}
+
+function cloudActionsSlot(): HTMLElement | null {
+    if (typeof document === "undefined") return null;
+    return document.getElementById("pipeline-workspace-actions");
+}
+
+export function PageHeader({
+    breadcrumbs = [],
+    title,
+    titleTooltip,
+    subtitle,
+    statusChips = [],
+    dateRange,
+    onDateRangeChange,
+    onRefresh,
+    primaryAction,
+    extra,
+}: Props) {
+    const ui = useOptionalDatapipeUiConfig();
+    const localChrome = useLocalChromeActions();
+    const cloud = ui?.mode === "cloud" || isCloudHost();
+    const showDateRange = Boolean(dateRange && onDateRangeChange);
+    const showShellActions = Boolean(localChrome);
+    const showActions =
+        showDateRange ||
+        Boolean(onRefresh) ||
+        Boolean(primaryAction) ||
+        Boolean(extra) ||
+        showShellActions;
+    const [actionsSlot, setActionsSlot] = React.useState<HTMLElement | null>(() =>
+        cloud ? cloudActionsSlot() : null,
+    );
+
+    React.useEffect(() => {
+        if (!cloud) return;
+        setActionsSlot(cloudActionsSlot());
+    }, [cloud]);
+
+    const actions = showActions ? (
+        <div className="ops-page-header-actions">
+            {showDateRange && (
+                <DatePicker.RangePicker
+                    value={dateRange!}
+                    onChange={(vals) => {
+                        if (vals?.[0] && vals?.[1]) {
+                            onDateRangeChange!([vals[0], vals[1]]);
+                        }
+                    }}
+                    format="MMM D, YYYY"
+                    className="ops-date-range"
+                />
+            )}
+            {localChrome ? (
+                <Button icon={<ReloadOutlined />} onClick={localChrome.onRefreshPage}>
+                    Обновить
+                </Button>
+            ) : null}
+            {localChrome ? (
+                <Button
+                    type="primary"
+                    className="dp-btn-primary"
+                    disabled={!localChrome.canStart}
+                    loading={localChrome.starting}
+                    onClick={localChrome.onRunSteps}
+                >
+                    Запустить шаги
+                </Button>
+            ) : null}
+            {onRefresh && (
+                <Button icon={<ReloadOutlined />} onClick={onRefresh}>
+                    Refresh
+                </Button>
+            )}
+            {primaryAction &&
+                (primaryAction.href ? (
+                    <Link to={primaryAction.href}>
+                        <Button
+                            type="primary"
+                            disabled={primaryAction.disabled}
+                            title={primaryAction.title}
+                        >
+                            {primaryAction.label}
+                        </Button>
+                    </Link>
+                ) : (
+                    <Button
+                        type="primary"
+                        onClick={primaryAction.onClick}
+                        disabled={primaryAction.disabled}
+                        title={primaryAction.title}
+                    >
+                        {primaryAction.label}
+                    </Button>
+                ))}
+            {extra}
+        </div>
+    ) : null;
+
+    /* CloudShell owns breadcrumbs / section title — actions go in the host toolbar. */
+    if (cloud) {
+        if (!actions) return null;
+        if (actionsSlot) {
+            return createPortal(actions, actionsSlot);
+        }
+        return <div className="ops-page-header ops-page-header-cloud">{actions}</div>;
+    }
+
+    return (
+        <div className="ops-page-header">
+            {breadcrumbs.length > 0 && (
+                <div className="ops-breadcrumb">
+                    {breadcrumbs.map((b, i) => (
+                        <React.Fragment key={b.label}>
+                            {i > 0 && <span className="ops-breadcrumb-sep"> / </span>}
+                            {b.href ? <Link to={b.href}>{b.label}</Link> : <span>{b.label}</span>}
+                        </React.Fragment>
+                    ))}
+                </div>
+            )}
+            <div className="ops-page-header-main">
+                <div className="ops-page-header-left">
+                    <div className="ops-page-title-row">
+                        <h1 className="ops-page-title" title={titleTooltip}>
+                            {title}
+                        </h1>
+                        <StarOutlined className="ops-page-star" />
+                    </div>
+                    {subtitle && <p className="ops-page-subtitle">{subtitle}</p>}
+                    {statusChips.length > 0 && (
+                        <Space size={8} className="ops-status-chips">
+                            {statusChips.map((chip) => (
+                                <Tag
+                                    key={chip.label}
+                                    className={`ops-status-chip ops-status-chip-${chip.variant ?? "default"}`}
+                                >
+                                    {chip.label}
+                                </Tag>
+                            ))}
+                        </Space>
+                    )}
+                </div>
+                {actions}
+            </div>
+        </div>
+    );
+}
+
+export function defaultDateRange(): [Moment, Moment] {
+    return [moment().subtract(7, "days"), moment()];
+}

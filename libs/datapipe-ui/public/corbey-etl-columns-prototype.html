@@ -1,0 +1,1536 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>datapipe · Corbey ETL stage graph prototype</title>
+  <style>
+    :root {
+      --dp-bg-app: #f5f8fc;
+      --dp-bg-surface: #ffffff;
+      --dp-border-subtle: #dbe3ef;
+      --dp-border-strong: #c8d3e1;
+      --dp-text-primary: #0b1220;
+      --dp-text-secondary: #5b6b82;
+      --dp-text-muted: #8a98aa;
+      --dp-accent: #1677ff;
+      --dp-accent-hover: #0958d9;
+      --dp-accent-soft: #e8f2ff;
+      --dp-graph-bg: #fbfdff;
+      --dp-graph-dot: #dce7f5;
+      --dp-edge: #52677f;
+      --dp-edge-muted: #c7d1de;
+      --dp-edge-active: #1677ff;
+      --dp-table-bg: #fff3e5;
+      --dp-table-bg-2: #ffe5c7;
+      --dp-table-border: #ff7a1a;
+      --dp-table-icon: #ff6b00;
+      --dp-table-text: #3e2407;
+      --dp-transform-bg: #effff3;
+      --dp-transform-bg-2: #dcf8e5;
+      --dp-transform-border: #16a34a;
+      --dp-transform-icon: #0fa83d;
+      --dp-transform-text: #083b18;
+      --dp-sidebar-bg: #071a36;
+      --dp-sidebar-bg-2: #031126;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      color: var(--dp-text-primary);
+      background: var(--dp-bg-app);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input { font: inherit; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      color: #dce8f8;
+      background:
+        radial-gradient(circle at top left, rgba(22, 119, 255, 0.22), transparent 34%),
+        linear-gradient(180deg, var(--dp-sidebar-bg), var(--dp-sidebar-bg-2));
+      border-right: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .brand {
+      padding: 27px 24px 22px;
+      color: #fff;
+      font-size: 19px;
+      font-weight: 850;
+      letter-spacing: -0.03em;
+    }
+
+    .brand span { color: #52b6ff; }
+
+    .nav {
+      display: grid;
+      gap: 5px;
+      padding-right: 12px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      height: 52px;
+      padding: 0 24px;
+      color: #b8cae1;
+      border-radius: 0 11px 11px 0;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .nav-item.active {
+      color: #f4f9ff;
+      background: rgba(58,149,255,0.24);
+      box-shadow: inset 0 0 0 1px rgba(82,182,255,0.28);
+    }
+
+    .nav-item.active::after {
+      width: 4px;
+      height: 30px;
+      margin-left: auto;
+      content: "";
+      background: #52b6ff;
+      border-radius: 99px;
+    }
+
+    .nav-icon {
+      display: grid;
+      width: 21px;
+      height: 21px;
+      place-items: center;
+      color: currentColor;
+    }
+
+    .nav-icon svg { width: 19px; height: 19px; }
+
+    .sidebar-note {
+      margin: auto 18px 18px;
+      padding: 14px;
+      color: #94a8c3;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .sidebar-note strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #e9f3ff;
+      font-size: 12px;
+    }
+
+    .main {
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      flex-direction: column;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 84px;
+      flex: 0 0 84px;
+      padding: 0 34px;
+      background: var(--dp-bg-surface);
+      border-bottom: 1px solid var(--dp-border-subtle);
+    }
+
+    .eyebrow {
+      margin-bottom: 4px;
+      color: var(--dp-text-muted);
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 25px;
+      line-height: 1.1;
+      letter-spacing: -0.035em;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--dp-text-secondary);
+      font-size: 12px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 34px;
+      padding: 0 12px;
+      color: #087a2a;
+      background: #f0fff5;
+      border: 1px solid #b5ebc7;
+      border-radius: 9px;
+      font-weight: 750;
+    }
+
+    .status::before {
+      width: 8px;
+      height: 8px;
+      content: "";
+      background: #08b83e;
+      border-radius: 50%;
+    }
+
+    .content {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      padding: 18px 26px 22px;
+    }
+
+    .card {
+      display: flex;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--dp-bg-surface);
+      border: 1px solid var(--dp-border-subtle);
+      border-radius: 14px;
+      box-shadow: 0 1px 2px rgba(16,24,40,0.06), 0 12px 32px rgba(16,24,40,0.08);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 72px;
+      padding: 0 20px 0 24px;
+      border-bottom: 1px solid var(--dp-border-subtle);
+    }
+
+    .label-overview {
+      display: flex;
+      align-items: stretch;
+      min-height: 156px;
+      padding: 12px 18px;
+      flex: 0 0 156px;
+      gap: 18px;
+      background: #fff;
+      border-bottom: 1px solid var(--dp-border-subtle);
+    }
+
+    .label-overview-copy {
+      display: flex;
+      width: 158px;
+      flex: 0 0 158px;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .label-overview-title {
+      font-size: 14px;
+      font-weight: 850;
+      color: var(--dp-text-primary);
+    }
+
+    .label-overview-subtitle {
+      margin-top: 4px;
+      color: var(--dp-text-muted);
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+
+    .label-overview-scroll {
+      min-width: 0;
+      flex: 1;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    .label-overview-canvas {
+      position: relative;
+      width: 830px;
+      height: 130px;
+      margin: 0 auto;
+    }
+
+    .label-overview-edges {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .label-overview-edge {
+      fill: none;
+      stroke: #3b4f6b;
+      stroke-width: 2.1;
+      transition: opacity 140ms ease, stroke 140ms ease;
+    }
+
+    .label-overview-shared {
+      fill: none;
+      stroke: #3b82f6;
+      stroke-width: 1.5;
+      stroke-dasharray: 3 5;
+      opacity: 0.68;
+    }
+
+    .label-overview-shared-text {
+      fill: #0b5ed7;
+      font-size: 9.5px;
+      font-weight: 750;
+    }
+
+    .label-interleaved-container {
+      position: absolute;
+      left: 8px;
+      top: 5px;
+      z-index: 0;
+      width: 274px;
+      height: 112px;
+      padding: 0;
+      background: linear-gradient(180deg, #fff, #f7fbff);
+      border: 1.8px dashed #7aa7ff;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: opacity 140ms ease, box-shadow 140ms ease;
+    }
+
+    .label-interleaved-container.active {
+      box-shadow: 0 0 0 4px rgba(22,119,255,0.14);
+    }
+
+    .label-interleaved-title {
+      position: absolute;
+      top: 8px;
+      left: 13px;
+      color: var(--dp-accent);
+      font-size: 11.5px;
+      font-weight: 800;
+      pointer-events: none;
+    }
+
+    .label-overview-node {
+      position: absolute;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 112px;
+      height: 56px;
+      color: var(--dp-text-primary);
+      background: linear-gradient(180deg, #fff, #f5f9ff);
+      border: 1.8px solid var(--dp-accent);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      transition: opacity 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+    }
+
+    .label-overview-node:hover {
+      box-shadow: 0 0 0 4px rgba(22,119,255,0.12);
+      transform: translateY(-1px);
+    }
+
+    .label-overview-node.active {
+      border-width: 2.6px;
+      box-shadow: 0 0 0 4px rgba(22,119,255,0.16);
+    }
+
+    .label-overview-node.muted,
+    .label-interleaved-container.muted,
+    .label-overview-edge.muted,
+    .label-overview-shared.muted,
+    .label-overview-shared-text.muted {
+      opacity: 0.18;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font-size: 18px;
+      font-weight: 850;
+      letter-spacing: -0.02em;
+    }
+
+    .card-title svg { color: var(--dp-accent); }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .segmented {
+      display: flex;
+      height: 38px;
+      padding: 3px;
+      background: #f1f5fa;
+      border: 1px solid var(--dp-border-subtle);
+      border-radius: 9px;
+    }
+
+    .segment {
+      padding: 0 12px;
+      color: var(--dp-text-secondary);
+      background: transparent;
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .segment.active {
+      color: var(--dp-accent-hover);
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(16,24,40,0.12);
+    }
+
+    .search {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 210px;
+      height: 38px;
+      padding: 0 11px;
+      background: #fff;
+      border: 1px solid var(--dp-border-subtle);
+      border-radius: 9px;
+    }
+
+    .search:focus-within {
+      border-color: #83bfff;
+      box-shadow: 0 0 0 3px rgba(22,119,255,0.09);
+    }
+
+    .search svg { flex: 0 0 auto; color: var(--dp-text-muted); }
+
+    .search input {
+      width: 100%;
+      min-width: 0;
+      padding: 0;
+      color: var(--dp-text-primary);
+      background: transparent;
+      border: 0;
+      outline: 0;
+      font-size: 12px;
+    }
+
+    .tool-button {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      place-items: center;
+      color: #18324f;
+      background: #fff;
+      border: 1px solid var(--dp-border-subtle);
+      border-radius: 9px;
+      cursor: pointer;
+    }
+
+    .tool-button:hover { background: #f8fbff; border-color: #b6c6db; }
+
+    .graph-shell {
+      position: relative;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+      background-color: var(--dp-graph-bg);
+      background-image: radial-gradient(var(--dp-graph-dot) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    .viewport {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      touch-action: none;
+      cursor: grab;
+    }
+
+    .viewport.dragging { cursor: grabbing; }
+
+    .world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 7660px;
+      height: 3200px;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    .zone {
+      position: absolute;
+      top: 24px;
+      bottom: 44px;
+      z-index: 0;
+      border: 1px solid rgba(112,139,172,0.16);
+      border-radius: 18px;
+      transition: opacity 160ms ease;
+      pointer-events: none;
+    }
+
+    .zone-input { background: rgba(239,246,255,0.86); }
+    .zone-pipeline { background: rgba(255,251,235,0.69); }
+    .zone-output { background: rgba(240,253,244,0.86); }
+    .zone-extract { background: rgba(239,246,255,0.78); }
+    .zone-transform { background: rgba(255,251,235,0.72); }
+    .zone-load { background: rgba(240,253,244,0.82); }
+
+    .zone-label {
+      position: absolute;
+      top: 41px;
+      z-index: 5;
+      padding: 4px 8px;
+      color: #61738a;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid rgba(200,211,225,0.8);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transform: translateX(-50%);
+      transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    .stage-label {
+      position: absolute;
+      top: 50px;
+      z-index: 5;
+      min-width: 220px;
+      padding: 14px 20px;
+      color: #34516f;
+      background: rgba(255,255,255,0.92);
+      border: 2px solid #c8d6e8;
+      border-radius: 14px;
+      cursor: pointer;
+      font-size: 28px;
+      font-weight: 800;
+      text-align: center;
+      transform: translateX(-50%) scale(var(--stage-label-boost, 1));
+      transform-origin: top center;
+      transition: opacity 160ms ease, color 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .stage-label.secondary {
+      top: 300px;
+      min-width: 190px;
+      padding: 10px 16px;
+      font-size: 22px;
+      color: #5925dc;
+      background: rgba(244,243,255,0.94);
+      border-color: #d9d6fe;
+    }
+
+    .stage-label small {
+      display: block;
+      margin-top: 2px;
+      color: #8a98aa;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .stage-label:hover,
+    .zone-label:hover,
+    .stage-label.active,
+    .zone-label.active {
+      color: var(--dp-accent-hover);
+      background: #f4f9ff;
+      border-color: #83bfff;
+    }
+
+    .edges {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .edge {
+      fill: none;
+      stroke: var(--dp-edge);
+      stroke-width: 1.65;
+      opacity: 0.64;
+      marker-end: url(#arrow);
+      transition: opacity 160ms ease, stroke 160ms ease, stroke-width 160ms ease;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .edge.visible {
+      stroke: var(--dp-edge-active);
+      stroke-width: 2.35;
+      opacity: 0.92;
+    }
+
+    .edge.dimmed { opacity: 0; }
+
+    .node {
+      position: absolute;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: 28px minmax(0,1fr);
+      column-gap: 12px;
+      align-items: center;
+      width: 420px;
+      height: 156px;
+      padding: 11px 16px;
+      overflow: hidden;
+      border: 2px solid;
+      border-radius: 9px;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 1px 2px rgba(16,24,40,0.12), 0 7px 16px rgba(16,24,40,0.07);
+      transition: opacity 160ms ease, border-color 160ms ease, transform 140ms ease, box-shadow 140ms ease;
+    }
+
+    .node:hover {
+      z-index: 4;
+      transform: translateY(-2px);
+      box-shadow: 0 2px 4px rgba(16,24,40,0.12), 0 10px 22px rgba(16,24,40,0.12);
+    }
+
+    .node-transform {
+      color: var(--dp-transform-text);
+      background: linear-gradient(180deg, var(--dp-transform-bg), var(--dp-transform-bg-2));
+      border-color: var(--dp-transform-border);
+    }
+
+    .node-table {
+      color: var(--dp-table-text);
+      background: linear-gradient(180deg, var(--dp-table-bg), var(--dp-table-bg-2));
+      border-color: var(--dp-table-border);
+    }
+
+    .node-icon {
+      display: grid;
+      width: 26px;
+      height: 32px;
+      place-items: center;
+      color: var(--dp-transform-icon);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 31px;
+      font-style: italic;
+    }
+
+    .node-table .node-icon {
+      color: var(--dp-table-icon);
+      font-family: inherit;
+      font-size: 0;
+      font-style: normal;
+    }
+
+    .node-table .node-icon::before {
+      width: 22px;
+      height: 22px;
+      content: "";
+      background:
+        linear-gradient(#ff6b00,#ff6b00) 0 3px/22px 2px no-repeat,
+        linear-gradient(#ff6b00,#ff6b00) 0 10px/22px 2px no-repeat,
+        linear-gradient(#ff6b00,#ff6b00) 0 17px/22px 2px no-repeat,
+        linear-gradient(#ff6b00,#ff6b00) 3px 0/2px 22px no-repeat,
+        linear-gradient(#ff6b00,#ff6b00) 17px 0/2px 22px no-repeat;
+      border-radius: 2px;
+      opacity: 0.9;
+    }
+
+    .node-title {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.18;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    .node-subtitle {
+      display: block;
+      margin-top: 3px;
+      overflow: hidden;
+      color: currentColor;
+      font-size: 10.5px;
+      font-style: italic;
+      font-weight: 600;
+      line-height: 1.1;
+      opacity: 0.72;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .node-body {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .node-key-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      column-gap: 8px;
+      align-items: start;
+      margin-top: 6px;
+    }
+
+    .node-key-label {
+      color: currentColor;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 22px;
+    }
+
+    .node-key-chips {
+      display: flex;
+      min-width: 0;
+      max-width: 100%;
+      gap: 5px;
+      padding-bottom: 2px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: thin;
+    }
+
+    .node-key-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      flex: 0 0 auto;
+      border: 1px solid #d7e0ea;
+      border-radius: 6px;
+      font-size: 10.5px;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .node-key-chip.pk {
+      color: #6b3500;
+      background: #fff8ef;
+      border-color: #f2bf8c;
+    }
+
+    .node-key-chip.tpk {
+      color: #0b6325;
+      background: #f2fff6;
+      border-color: #9fe6b7;
+    }
+
+    .node-key-chip.label {
+      color: #5925dc;
+      background: #f4f3ff;
+      border-color: #d9d6fe;
+    }
+
+    .node.selected {
+      z-index: 4;
+      border-color: var(--dp-accent);
+      box-shadow: 0 0 0 4px rgba(22,119,255,0.14), 0 9px 22px rgba(16,24,40,0.12);
+    }
+
+    .node.dimmed { opacity: 0; pointer-events: none; }
+    .stage-label.dimmed { opacity: 0.25; }
+    .zone.dimmed { opacity: 0.12; }
+
+    .focus-bar {
+      position: absolute;
+      left: 16px;
+      bottom: 15px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: calc(100% - 32px);
+      min-height: 40px;
+      padding: 8px 10px 8px 13px;
+      color: #27425f;
+      background: rgba(255,255,255,0.94);
+      border: 1px solid var(--dp-border-subtle);
+      border-radius: 9px;
+      box-shadow: 0 5px 18px rgba(16,24,40,0.10);
+      font-size: 11px;
+      pointer-events: none;
+    }
+
+    .focus-bar strong { color: var(--dp-text-primary); }
+
+    .focus-bar button {
+      height: 24px;
+      margin-left: 3px;
+      padding: 0 8px;
+      color: var(--dp-accent-hover);
+      background: var(--dp-accent-soft);
+      border: 0;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 800;
+      pointer-events: auto;
+    }
+
+    .legend {
+      position: absolute;
+      right: 16px;
+      bottom: 15px;
+      z-index: 19;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      height: 36px;
+      padding: 0 12px;
+      color: var(--dp-text-secondary);
+      background: rgba(255,255,255,0.9);
+      border: 1px solid var(--dp-border-subtle);
+      border-radius: 8px;
+      font-size: 10px;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .swatch { width: 10px; height: 10px; border: 2px solid; border-radius: 3px; }
+    .swatch-step { background: var(--dp-transform-bg-2); border-color: var(--dp-transform-border); }
+    .swatch-table { background: var(--dp-table-bg-2); border-color: var(--dp-table-border); }
+
+    .toast {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      z-index: 30;
+      padding: 9px 13px;
+      color: #fff;
+      background: #18324f;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -8px);
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .header { padding: 0 18px; }
+      .header-meta > span:not(.status) { display: none; }
+      .content { padding: 10px; }
+      .search { display: none; }
+      .card-title { font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">data<span>pipe</span></div>
+      <nav class="nav" aria-label="Main navigation">
+        <div class="nav-item">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+          Overview
+        </div>
+        <div class="nav-item active">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.5 11.2 16.5 7M7.5 12.8l9 4.2"/></svg></span>
+          Pipeline graph
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg></span>
+          Catalog
+        </div>
+        <div class="nav-item">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V9m5 10V5m6 14v-7m5 7V3"/></svg></span>
+          Runs
+        </div>
+      </nav>
+      <div class="sidebar-note">
+        <strong>Stage columns prototype</strong>
+        One layout pass. Selection changes only visual state; node coordinates and edges remain stable.
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="header">
+        <div>
+          <div class="eyebrow">Pipelines / vedana-corbey</div>
+          <h1>Corbey ETL</h1>
+        </div>
+        <div class="header-meta">
+          <span>25 steps · 36 tables · 71 connections</span>
+          <span class="status">Pipeline ready</span>
+        </div>
+      </header>
+
+      <section class="content">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M7.5 11.2 16.5 7M7.5 12.8l9 4.2"/></svg>
+              Pipeline lineage
+            </div>
+            <div class="toolbar">
+              <div class="segmented" aria-label="Graph view">
+                <button class="segment" id="classicMode" type="button">Classic</button>
+                <button class="segment active" type="button">Stages</button>
+              </div>
+              <label class="search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                <input id="search" type="search" placeholder="Find a step…" autocomplete="off" />
+              </label>
+              <button class="tool-button" id="fit" type="button" title="Fit graph" aria-label="Fit graph">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              </button>
+              <button class="tool-button" id="reset" type="button" title="Clear focus" aria-label="Clear focus">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="label-overview" id="labelOverview">
+            <div class="label-overview-copy">
+              <div class="label-overview-title">Pipeline overview</div>
+              <div class="label-overview-subtitle">Label graph generated from the pipeline’s real stage relations</div>
+            </div>
+            <div class="label-overview-scroll">
+              <div class="label-overview-canvas">
+                <div
+                  class="label-interleaved-container"
+                  data-label-group="extract,transform"
+                  role="button"
+                  tabindex="0"
+                  title="Focus extract + transform"
+                >
+                  <span class="label-interleaved-title">extract ⇄ transform</span>
+                </div>
+
+                <svg class="label-overview-edges" width="830" height="130" aria-hidden="true">
+                  <defs>
+                    <marker id="label-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b4f6b"></path>
+                    </marker>
+                  </defs>
+                  <path class="label-overview-edge" data-label-edge="extract,transform|data-model" d="M 282 63 C 303 63, 309 61, 330 61" marker-end="url(#label-arrow)"></path>
+                  <path class="label-overview-edge" data-label-edge="data-model|grist" d="M 442 61 C 462 61, 470 61, 490 61" marker-end="url(#label-arrow)"></path>
+                  <path class="label-overview-edge" data-label-edge="grist|load" d="M 602 61 C 622 61, 630 61, 650 61" marker-end="url(#label-arrow)"></path>
+                  <path class="label-overview-shared" data-shared-stages="extract,grist" d="M 78 105 C 205 126, 415 126, 546 94"></path>
+                  <path class="label-overview-shared" data-shared-stages="transform,grist" d="M 206 105 C 305 118, 444 114, 546 94"></path>
+                  <text class="label-overview-shared-text" data-shared-stages="extract,grist" x="300" y="126">overlap · 2</text>
+                  <text class="label-overview-shared-text" data-shared-stages="transform,grist" x="425" y="116">overlap · 2</text>
+                </svg>
+
+                <button class="label-overview-node" data-stage-label="extract" type="button" style="left:22px;top:48px">extract</button>
+                <button class="label-overview-node" data-stage-label="transform" type="button" style="left:150px;top:48px">transform</button>
+                <button class="label-overview-node" data-stage-label="data-model" type="button" style="left:330px;top:33px">data-model</button>
+                <button class="label-overview-node" data-stage-label="grist" type="button" style="left:490px;top:33px">grist</button>
+                <button class="label-overview-node" data-stage-label="load" type="button" style="left:650px;top:33px">load</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="graph-shell">
+            <div class="viewport" id="viewport">
+              <div class="world" id="world">
+                <div id="zones"></div>
+                <svg class="edges" id="edges" viewBox="0 0 7660 3200" aria-hidden="true">
+                  <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52677f"></path>
+                    </marker>
+                  </defs>
+                </svg>
+                <div id="nodes"></div>
+                <div id="labels"></div>
+              </div>
+            </div>
+            <div class="toast" id="toast"></div>
+            <div class="focus-bar" id="focusBar">
+              <span><strong>Explore:</strong> click a stage to isolate it, or a node to reveal its complete upstream + downstream lineage.</span>
+              <button id="clearFocus" type="button" hidden>Clear focus</button>
+            </div>
+            <div class="legend">
+              <span class="legend-item"><i class="swatch swatch-step"></i> Transform</span>
+              <span class="legend-item"><i class="swatch swatch-table"></i> Table</span>
+              <span>Wheel to zoom · drag to pan</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const NODE_W = 420;
+    const NODE_H = 156;
+    const GRAPH_TOP = 190;
+    const ROW_GAP = 28;
+    const LANE_GAP = 540;
+    const WORLD_W = 7660;
+    const WORLD_H = 3200;
+    const laneX = lane => 120 + lane * LANE_GAP;
+
+    // The displayed stage names and their order are extracted from the first
+    // occurrence of ("stage", value) in the real pipeline labels.
+    const stageOrder = ["extract", "data-model", "grist", "transform", "load"];
+    const columns = [
+      { id: "extract", label: "extract", detail: 'label: stage="extract"', zone: "extract", left: 50, right: 3290 },
+      { id: "transform", label: "transform", detail: 'label: stage="transform"', zone: "transform", left: 3300, right: 6530 },
+      { id: "load", label: "load", detail: 'label: stage="load"', zone: "load", left: 6540, right: 7610 },
+    ];
+
+    const steps = [
+      { id: "get_data_model", title: "get_data_model", lane: 0, labels: [["flow","regular"],["flow","on-demand"],["stage","extract"],["source","Data Model"],["stage","data-model"]], inputs: [], outputs: ["dm_anchors","dm_anchor_attributes","dm_link_attributes","dm_links","dm_queries","dm_prompts","dm_conversation_lifecycle"] },
+      { id: "get_grist_data", title: "get_grist_data", lane: 0, labels: [["flow","regular"],["flow","on-demand"],["stage","extract"],["source","Grist"],["stage","grist"]], inputs: [], outputs: ["grist_nodes","grist_edges"] },
+      { id: "fetch_documents", title: "fetch_documents", lane: 0, labels: [["flow","regular"],["stage","extract"],["source","API"]], inputs: [], outputs: ["countries","documents_index","document_details"] },
+      { id: "fetch_document_content", title: "fetch_document_content", lane: 2, labels: [["flow","regular"],["stage","extract"],["source","API"]], inputs: ["document_details"], outputs: ["document_content"] },
+      { id: "extract_status_triggers", title: "extract_status_triggers", lane: 2, labels: [["flow","regular"],["stage","extract"]], inputs: ["document_details"], outputs: ["document_status_triggers"] },
+      { id: "fetch_status_history", title: "fetch_document_statuses_history", lane: 4, labels: [["flow","regular"],["stage","extract"],["source","API"]], inputs: ["document_status_triggers"], outputs: ["documents_status"] },
+      { id: "generate_chunks", title: "generate_document_chunks", lane: 6, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_details","document_content"], outputs: ["document_chunks"] },
+      { id: "build_country", title: "build_country_nodes", lane: 6, labels: [["flow","regular"],["stage","transform"]], inputs: ["countries"], outputs: ["country_nodes"] },
+      { id: "build_resource", title: "build_resource_nodes", lane: 6, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_details"], outputs: ["resource_nodes"] },
+      { id: "build_chunk", title: "build_chunk_nodes_edges", lane: 8, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_chunks"], outputs: ["chunk_nodes","chunk_edges"] },
+      { id: "build_document", title: "build_document_nodes", lane: 6, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_details"], outputs: ["document_nodes"] },
+      { id: "build_eli", title: "build_document_eli_edges", lane: 6, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_details"], outputs: ["document_eli_edges"] },
+      { id: "build_doc_chunk", title: "build_document_chunk_edges", lane: 8, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_chunks"], outputs: ["document_edges"] },
+      { id: "build_history", title: "build_document_history_nodes_edges", lane: 6, labels: [["flow","regular"],["stage","transform"]], inputs: ["documents_status","document_details"], outputs: ["document_history_nodes","document_history_edges"] },
+      { id: "fetch_legal_topics", title: "fetch_legal_topics", lane: 0, labels: [["flow","regular"],["stage","extract"],["source","Grist"]], inputs: [], outputs: ["legal_topics"] },
+      { id: "classify_topics", title: "classify_chunk_topics", lane: 8, labels: [["flow","regular"],["stage","transform"]], inputs: ["document_chunks","legal_topics"], outputs: ["chunk_topic_edges"] },
+      { id: "prepare_nodes", title: "prepare_nodes", lane: 10, labels: [["flow","regular"],["flow","on-demand"],["stage","transform"],["stage","grist"]], inputs: ["grist_nodes","country_nodes","resource_nodes","chunk_nodes","document_nodes","document_history_nodes"], outputs: ["nodes"] },
+      { id: "prepare_edges", title: "prepare_edges", lane: 10, labels: [["flow","regular"],["flow","on-demand"],["stage","transform"],["stage","grist"]], inputs: ["grist_edges","chunk_edges","chunk_topic_edges","document_edges","document_eli_edges","document_history_edges"], outputs: ["edges"] },
+      { id: "ensure_node_indexes", title: "ensure_memgraph_node_indexes", lane: 12, labels: [["flow","regular"],["flow","on-demand"],["stage","load"]], inputs: ["dm_anchor_attributes"], outputs: ["memgraph_anchor_indexes"] },
+      { id: "ensure_edge_indexes", title: "ensure_memgraph_edge_indexes", lane: 12, labels: [["flow","regular"],["flow","on-demand"],["stage","load"]], inputs: ["dm_link_attributes"], outputs: ["memgraph_link_indexes"] },
+      { id: "load_nodes", title: "pass_df_to_memgraph · nodes", lane: 12, labels: [["flow","regular"],["flow","on-demand"],["stage","load"]], inputs: ["nodes"], outputs: ["memgraph_nodes"] },
+      { id: "load_edges", title: "pass_df_to_memgraph · edges", lane: 12, labels: [["flow","regular"],["flow","on-demand"],["stage","load"]], inputs: ["edges"], outputs: ["memgraph_edges"] },
+      { id: "embed_nodes", title: "generate_embeddings · nodes", lane: 12, labels: [["flow","regular"],["flow","on-demand"],["stage","load"]], inputs: ["nodes","dm_anchor_attributes"], outputs: ["rag_anchor_embeddings"] },
+      { id: "embed_edges", title: "generate_embeddings · edges", lane: 12, labels: [["flow","regular"],["flow","on-demand"],["stage","load"]], inputs: ["edges","dm_link_attributes"], outputs: ["rag_edge_embeddings"] },
+      { id: "get_eval_gds", title: "get_eval_gds_from_grist", lane: 0, labels: [["pipeline","eval"],["flow","eval"],["stage","extract"]], inputs: [], outputs: ["eval_gds"] },
+    ].map((step, order) => ({
+      ...step,
+      order,
+      type: "transform",
+      primaryStage: step.labels.find(([key]) => key === "stage")[1],
+      stages: step.labels.filter(([key]) => key === "stage").map(([, value]) => value),
+    }));
+
+    const transformPrimaryKeys = {
+      fetch_document_content: ["document_id"],
+      extract_status_triggers: ["document_id"],
+      fetch_status_history: ["document_id"],
+      generate_chunks: ["document_id"],
+      build_country: ["country_code"],
+      build_resource: ["document_id"],
+      build_chunk: ["document_chunk_id"],
+      build_document: ["document_id"],
+      build_eli: ["document_id"],
+      build_doc_chunk: ["document_chunk_id"],
+      build_history: ["document_id"],
+      classify_topics: ["document_chunk_id"],
+      prepare_nodes: ["node_id", "node_type"],
+      prepare_edges: ["from_node_id", "to_node_id", "edge_label"],
+      ensure_node_indexes: ["attribute_name"],
+      ensure_edge_indexes: ["attribute_name"],
+      load_nodes: ["node_id", "node_type"],
+      load_edges: ["from_node_id", "to_node_id", "edge_label"],
+      embed_nodes: ["node_id", "node_type"],
+      embed_edges: ["from_node_id", "to_node_id", "edge_label"],
+    };
+    const generateSteps = new Set([
+      "get_data_model", "get_grist_data", "fetch_documents", "fetch_legal_topics", "get_eval_gds",
+    ]);
+    steps.forEach(step => {
+      step.tpk = transformPrimaryKeys[step.id] || [];
+      step.transformType = generateSteps.has(step.id) ? "DatatableTransformStep" : "BatchTransformStep";
+    });
+
+    const tablePrimaryKeys = {
+      dm_anchors: ["noun"],
+      dm_anchor_attributes: ["anchor", "attribute_name"],
+      dm_link_attributes: ["link", "attribute_name"],
+      dm_links: ["anchor1", "anchor2", "sentence"],
+      dm_queries: ["query_name"],
+      dm_prompts: ["name"],
+      dm_conversation_lifecycle: ["event"],
+      grist_nodes: ["node_id", "node_type"],
+      grist_edges: ["from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      countries: ["country_code"],
+      documents_index: ["document_id"],
+      document_details: ["document_id"],
+      document_content: ["document_id", "version_id"],
+      document_status_triggers: ["document_id"],
+      documents_status: ["document_id"],
+      document_chunks: ["document_chunk_id", "document_id"],
+      country_nodes: ["country_code", "node_id", "node_type"],
+      resource_nodes: ["document_id", "node_id", "node_type"],
+      chunk_nodes: ["document_chunk_id", "node_id", "node_type"],
+      chunk_edges: ["document_chunk_id", "from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      document_nodes: ["document_id", "node_id", "node_type"],
+      document_eli_edges: ["document_id", "from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      document_edges: ["document_chunk_id", "from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      document_history_nodes: ["document_id", "node_id", "node_type"],
+      document_history_edges: ["document_id", "from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      legal_topics: ["legal_topic_id"],
+      chunk_topic_edges: ["document_chunk_id", "from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      nodes: ["node_id", "node_type"],
+      edges: ["from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      memgraph_anchor_indexes: ["anchor"],
+      memgraph_link_indexes: ["link"],
+      memgraph_nodes: ["node_id", "node_type"],
+      memgraph_edges: ["from_node_id", "to_node_id", "from_node_type", "to_node_type", "edge_label"],
+      rag_anchor_embeddings: ["node_id", "node_type", "attribute_name"],
+      rag_edge_embeddings: ["from_node_id", "to_node_id", "edge_label", "attribute_name"],
+      eval_gds: ["gds_question"],
+    };
+
+    const producerByTable = new Map();
+    steps.forEach(step => step.outputs.forEach(table => producerByTable.set(table, step)));
+
+    const tableNames = [...new Set(steps.flatMap(step => step.outputs))];
+    const tables = tableNames.map(table => {
+      const producer = producerByTable.get(table);
+      return {
+        id: `table:${table}`,
+        table,
+        title: table,
+        subtitle: table === "memgraph_nodes" || table === "memgraph_edges" ? "Neo4JStore" : "TableStoreDB",
+        type: "table",
+        pk: tablePrimaryKeys[table] || [],
+        lane: producer.lane + 1,
+        order: producer.order + producer.outputs.indexOf(table) / 10,
+        primaryStage: producer.primaryStage,
+        stages: [...producer.stages],
+        labels: producer.labels.filter(([key]) => key === "stage"),
+      };
+    });
+
+    const nodes = [
+      ...steps.map(step => ({
+        ...step,
+        subtitle: step.transformType,
+        column: step.primaryStage,
+        stage: step.primaryStage,
+      })),
+      ...tables.map(table => ({ ...table, column: table.primaryStage, stage: table.primaryStage })),
+    ];
+
+    const edges = [];
+    steps.forEach(step => {
+      step.outputs.forEach(table => edges.push({ source: step.id, target: `table:${table}` }));
+      step.inputs.forEach(table => edges.push({ source: `table:${table}`, target: step.id }));
+    });
+    edges.forEach((edge, index) => { edge.id = `e${index}`; });
+
+    const nodeById = new Map(nodes.map(node => [node.id, node]));
+    const columnById = new Map(columns.map(column => [column.id, column]));
+    const positions = new Map();
+    const outgoing = new Map(nodes.map(node => [node.id, []]));
+    const incoming = new Map(nodes.map(node => [node.id, []]));
+
+    edges.forEach(edge => {
+      outgoing.get(edge.source)?.push(edge.target);
+      incoming.get(edge.target)?.push(edge.source);
+    });
+
+    for (let lane = 0; lane <= 13; lane += 1) {
+      const laneNodes = nodes
+        .filter(node => node.lane === lane)
+        .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+      const totalHeight = laneNodes.length * NODE_H + Math.max(0, laneNodes.length - 1) * ROW_GAP;
+      let y = GRAPH_TOP + (2750 - totalHeight) / 2;
+      laneNodes.forEach(node => {
+        positions.set(node.id, { x: laneX(lane), y });
+        y += NODE_H + ROW_GAP;
+      });
+    }
+
+    const nodesRoot = document.getElementById("nodes");
+    const labelsRoot = document.getElementById("labels");
+    const zonesRoot = document.getElementById("zones");
+    const edgesRoot = document.getElementById("edges");
+    const viewport = document.getElementById("viewport");
+    const world = document.getElementById("world");
+    const focusBar = document.getElementById("focusBar");
+    const clearFocusButton = document.getElementById("clearFocus");
+    const searchInput = document.getElementById("search");
+    const toast = document.getElementById("toast");
+
+    const zoneDefs = columns;
+
+    zoneDefs.forEach(zone => {
+      const bg = document.createElement("div");
+      bg.className = `zone zone-${zone.id}`;
+      bg.dataset.zone = zone.id;
+      bg.style.left = `${zone.left}px`;
+      bg.style.width = `${zone.right - zone.left}px`;
+      zonesRoot.appendChild(bg);
+
+    });
+
+    const stageLabelPositions = {
+      extract: { x: 1670, secondary: false },
+      "data-model": { x: 1180, secondary: true },
+      grist: { x: 3760, secondary: true },
+      transform: { x: 4915, secondary: false },
+      load: { x: 7075, secondary: false },
+    };
+
+    stageOrder.forEach(stage => {
+      const position = stageLabelPositions[stage];
+      const label = document.createElement("button");
+      label.type = "button";
+      label.className = `stage-label${position.secondary ? " secondary" : ""}`;
+      label.dataset.stageLabel = stage;
+      label.style.left = `${position.x}px`;
+      label.innerHTML = position.secondary
+        ? stage
+        : `${stage}<small>label · stage</small>`;
+      label.addEventListener("click", event => {
+        event.stopPropagation();
+        focusStage(stage);
+      });
+      labelsRoot.appendChild(label);
+    });
+
+    document.querySelectorAll(".label-overview-node[data-stage-label]").forEach(label => {
+      label.addEventListener("click", event => {
+        event.stopPropagation();
+        focusStage(label.dataset.stageLabel);
+      });
+    });
+    const interleavedLabelGroup = document.querySelector("[data-label-group]");
+    const focusInterleavedGroup = event => {
+      event.stopPropagation();
+      focusStages(["extract", "transform"], "extract ⇄ transform", "label-group:extract-transform");
+    };
+    interleavedLabelGroup.addEventListener("click", focusInterleavedGroup);
+    interleavedLabelGroup.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        focusInterleavedGroup(event);
+      }
+    });
+
+    function renderKeyRow(label, values, kind) {
+      if (!values?.length) return "";
+      const chips = values
+        .map(value => `<span class="node-key-chip ${kind}" title="${value}">${value}</span>`)
+        .join("");
+      return `
+        <span class="node-key-row ${kind}">
+          <span class="node-key-label">${label}</span>
+          <span class="node-key-chips">${chips}</span>
+        </span>`;
+    }
+
+    nodes.forEach(node => {
+      const position = positions.get(node.id);
+      const element = document.createElement("article");
+      element.className = `node node-${node.type}`;
+      element.dataset.id = node.id;
+      element.dataset.column = node.column;
+      element.dataset.stage = node.stage;
+      element.style.left = `${position.x}px`;
+      element.style.top = `${position.y}px`;
+      element.title = `${node.title}\n${node.subtitle}\nClick to show complete lineage`;
+      const keyRows = node.type === "table"
+        ? renderKeyRow("PK", node.pk, "pk")
+        : [
+            renderKeyRow("TPK", node.tpk, "tpk"),
+            renderKeyRow("Labels", node.labels.map(([key, value]) => `${key}=${value}`), "label"),
+          ].join("");
+      element.innerHTML = `
+        <span class="node-icon" aria-hidden="true">${node.type === "transform" ? "f" : ""}</span>
+        <span class="node-body">
+          <span class="node-title">${node.title}</span>
+          <span class="node-subtitle">${node.subtitle}</span>
+          ${keyRows}
+        </span>`;
+      element.addEventListener("click", event => {
+        event.stopPropagation();
+        focusNode(node.id);
+      });
+      nodesRoot.appendChild(element);
+    });
+
+    function edgePath(sourceId, targetId) {
+      const source = positions.get(sourceId);
+      const target = positions.get(targetId);
+      const sx = source.x + NODE_W;
+      const sy = source.y + NODE_H / 2;
+      const tx = target.x;
+      const ty = target.y + NODE_H / 2;
+      const distance = Math.max(60, (tx - sx) * 0.48);
+      return `M ${sx} ${sy} C ${sx + distance} ${sy}, ${tx - distance} ${ty}, ${tx} ${ty}`;
+    }
+
+    edges.forEach(edge => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", edgePath(edge.source, edge.target));
+      path.setAttribute("class", "edge");
+      path.dataset.id = edge.id;
+      path.dataset.source = edge.source;
+      path.dataset.target = edge.target;
+      edgesRoot.appendChild(path);
+    });
+
+    let activeFocus = null;
+
+    function setFocus(visibleIds, selectedId, label, focusKey) {
+      if (activeFocus === focusKey) {
+        clearFocus();
+        return;
+      }
+      activeFocus = focusKey;
+      const visible = new Set(visibleIds);
+
+      document.querySelectorAll(".node").forEach(element => {
+        const isVisible = visible.has(element.dataset.id);
+        element.classList.toggle("dimmed", !isVisible);
+        element.classList.toggle("selected", element.dataset.id === selectedId);
+      });
+
+      document.querySelectorAll(".edge").forEach(element => {
+        const isVisible = visible.has(element.dataset.source) && visible.has(element.dataset.target);
+        element.classList.toggle("visible", isVisible);
+        element.classList.toggle("dimmed", !isVisible);
+      });
+
+      document.querySelectorAll(".stage-label").forEach(element => {
+        const stage = element.dataset.stageLabel;
+        const stageIds = nodes.filter(node => node.stages.includes(stage)).map(node => node.id);
+        const intersects = stageIds.some(id => visible.has(id));
+        element.classList.toggle("dimmed", !intersects);
+        element.classList.toggle("active", focusKey === `stage:${stage}`);
+      });
+
+      document.querySelectorAll(".label-overview-node[data-stage-label]").forEach(element => {
+        const stage = element.dataset.stageLabel;
+        const intersects = nodes.some(node => node.stages.includes(stage) && visible.has(node.id));
+        element.classList.toggle("muted", !intersects);
+        element.classList.toggle("active", focusKey === `stage:${stage}`);
+      });
+
+      const groupStages = interleavedLabelGroup.dataset.labelGroup.split(",");
+      const groupIntersects = nodes.some(node =>
+        groupStages.some(stage => node.stages.includes(stage)) && visible.has(node.id)
+      );
+      interleavedLabelGroup.classList.toggle("muted", !groupIntersects);
+      interleavedLabelGroup.classList.toggle(
+        "active",
+        focusKey === "label-group:extract-transform" ||
+          focusKey === "stage:extract" ||
+          focusKey === "stage:transform",
+      );
+
+      const focusedStages = focusKey.startsWith("stage:")
+        ? [focusKey.slice("stage:".length)]
+        : focusKey === "label-group:extract-transform"
+          ? ["extract", "transform"]
+          : [];
+      document.querySelectorAll("[data-label-edge]").forEach(element => {
+        const edgeStages = element.dataset.labelEdge.split(/[|,]/);
+        element.classList.toggle(
+          "muted",
+          focusedStages.length > 0 && !focusedStages.some(stage => edgeStages.includes(stage)),
+        );
+      });
+      document.querySelectorAll("[data-shared-stages]").forEach(element => {
+        const sharedStages = element.dataset.sharedStages.split(",");
+        element.classList.toggle(
+          "muted",
+          focusedStages.length === 0 || !focusedStages.some(stage => sharedStages.includes(stage)),
+        );
+      });
+
+      document.querySelectorAll(".zone").forEach(element => {
+        const zone = element.dataset.zone;
+        const intersects = nodes.some(node => node.primaryStage === zone && visible.has(node.id));
+        element.classList.toggle("dimmed", !intersects);
+      });
+
+      focusBar.querySelector("span").innerHTML = `<strong>Focused:</strong> ${label} · ${visible.size} of ${nodes.length} nodes remain visible`;
+      clearFocusButton.hidden = false;
+    }
+
+    function walk(startId, adjacency, result) {
+      const queue = [startId];
+      while (queue.length) {
+        const current = queue.shift();
+        (adjacency.get(current) || []).forEach(next => {
+          if (!result.has(next)) {
+            result.add(next);
+            queue.push(next);
+          }
+        });
+      }
+    }
+
+    function focusNode(id) {
+      const visible = new Set([id]);
+      walk(id, incoming, visible);
+      walk(id, outgoing, visible);
+      setFocus(visible, id, `lineage of ${nodeById.get(id).title}`, `node:${id}`);
+    }
+
+    function focusStages(stages, label, focusKey) {
+      const visible = new Set(
+        nodes
+          .filter(node => stages.some(stage => node.stages.includes(stage)))
+          .map(node => node.id),
+      );
+      [...visible].forEach(id => {
+        (incoming.get(id) || []).forEach(neighbor => visible.add(neighbor));
+        (outgoing.get(id) || []).forEach(neighbor => visible.add(neighbor));
+      });
+      setFocus(visible, null, label, focusKey);
+    }
+
+    function focusStage(stage) {
+      focusStages([stage], `label stage:${stage}`, `stage:${stage}`);
+    }
+
+    function clearFocus() {
+      activeFocus = null;
+      document.querySelectorAll(".dimmed, .selected, .visible, .active, .muted").forEach(element => {
+        element.classList.remove("dimmed", "selected", "visible", "active", "muted");
+      });
+      focusBar.querySelector("span").innerHTML = "<strong>Explore:</strong> click a stage to isolate it, or a node to reveal its complete upstream + downstream lineage.";
+      clearFocusButton.hidden = true;
+      searchInput.value = "";
+    }
+
+    function focusSearch(query) {
+      const normalized = query.trim().toLowerCase();
+      if (!normalized) {
+        clearFocus();
+        return;
+      }
+      const matches = nodes.filter(node =>
+        `${node.title} ${node.subtitle} ${node.labels.flat().join(" ")}`.toLowerCase().includes(normalized)
+      );
+      setFocus(matches.map(node => node.id), matches.length === 1 ? matches[0].id : null, `search “${query}”`, `search:${normalized}`);
+      activeFocus = `search:${normalized}:${Date.now()}`;
+    }
+
+    clearFocusButton.addEventListener("click", clearFocus);
+    document.getElementById("reset").addEventListener("click", clearFocus);
+    searchInput.addEventListener("input", event => focusSearch(event.target.value));
+
+    let transform = { x: 0, y: 0, scale: 1 };
+    let dragStart = null;
+
+    function applyTransform() {
+      world.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
+      world.style.setProperty(
+        "--stage-label-boost",
+        String(Math.min(4, Math.max(1, 0.5 / transform.scale))),
+      );
+    }
+
+    function fitGraph() {
+      const rect = viewport.getBoundingClientRect();
+      const padding = 38;
+      const scaleX = (rect.width - padding * 2) / WORLD_W;
+      const scaleY = (rect.height - padding * 2) / WORLD_H;
+      transform.scale = Math.min(1, Math.max(0.08, Math.min(scaleX, scaleY)));
+      transform.x = (rect.width - WORLD_W * transform.scale) / 2;
+      transform.y = (rect.height - WORLD_H * transform.scale) / 2;
+      applyTransform();
+    }
+
+    document.getElementById("fit").addEventListener("click", fitGraph);
+
+    viewport.addEventListener("wheel", event => {
+      event.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const worldX = (px - transform.x) / transform.scale;
+      const worldY = (py - transform.y) / transform.scale;
+      const factor = Math.exp(-event.deltaY * 0.0012);
+      const nextScale = Math.min(1.8, Math.max(0.08, transform.scale * factor));
+      transform.x = px - worldX * nextScale;
+      transform.y = py - worldY * nextScale;
+      transform.scale = nextScale;
+      applyTransform();
+    }, { passive: false });
+
+    viewport.addEventListener("pointerdown", event => {
+      if (event.button !== 0 || event.target.closest("button, .node")) return;
+      dragStart = { x: event.clientX, y: event.clientY, tx: transform.x, ty: transform.y };
+      viewport.classList.add("dragging");
+      viewport.setPointerCapture(event.pointerId);
+    });
+
+    viewport.addEventListener("pointermove", event => {
+      if (!dragStart) return;
+      transform.x = dragStart.tx + event.clientX - dragStart.x;
+      transform.y = dragStart.ty + event.clientY - dragStart.y;
+      applyTransform();
+    });
+
+    viewport.addEventListener("pointerup", event => {
+      if (!dragStart) return;
+      dragStart = null;
+      viewport.classList.remove("dragging");
+      viewport.releasePointerCapture(event.pointerId);
+    });
+
+    viewport.addEventListener("click", event => {
+      if (event.target === viewport || event.target === world || event.target.classList.contains("zone")) {
+        clearFocus();
+      }
+    });
+
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape") clearFocus();
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        searchInput.focus();
+      }
+    });
+
+    document.getElementById("classicMode").addEventListener("click", () => {
+      toast.textContent = "Classic mode stays unchanged; this file prototypes the separate Stages mode.";
+      toast.classList.add("show");
+      window.setTimeout(() => toast.classList.remove("show"), 2500);
+    });
+
+    window.addEventListener("resize", fitGraph);
+    requestAnimationFrame(fitGraph);
+  </script>
+</body>
+</html>
