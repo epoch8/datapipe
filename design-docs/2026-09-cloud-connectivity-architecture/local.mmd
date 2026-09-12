@@ -1,0 +1,19 @@
+flowchart LR
+  subgraph browser["User's Browser"]
+    ui["Dashboard UI"]
+  end
+  subgraph machine["User's machine"]
+    subgraph pipeline["Pipeline instance"]
+      vis_api["Visualization API"]
+      run_api["Run API"]
+      obs_api["Observability API"]
+    end
+  end
+
+  ui -->|visualization| vis_api
+  ui -->|run| run_api
+  ui -->|observability| obs_api
+
+  linkStyle 0 stroke:#2563eb,stroke-width:2px
+  linkStyle 1 stroke:#ea580c,stroke-width:2px
+  linkStyle 2 stroke:#16a34a,stroke-width:2px

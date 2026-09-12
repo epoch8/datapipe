@@ -1,0 +1,26 @@
+sequenceDiagram
+  participant UI as Dashboard UI
+  participant API as Dashboard API
+  participant GW as Gateway
+  participant AG as Agent
+  participant PI as Pipeline instance
+
+  AG->>GW: connect (wss, agent token)
+  AG->>GW: hello (agent id, version, pipelines)
+  GW-->>AG: welcome
+  Note over GW,AG: connection stays open, pings every 20 s
+
+  UI->>API: GET /projects/{project_id}/api/v1alpha3/pipelines/{pipeline_id}/graph
+  API->>GW: GET /api/v1alpha3/pipelines/{pipeline_id}/graph + user id
+  GW->>AG: request id=42
+  alt no pipeline instance running
+    AG->>PI: start process
+    loop until ready or timeout
+      AG->>PI: readiness check
+    end
+  end
+  AG->>PI: GET /api/v1alpha3/pipelines/{pipeline_id}/graph
+  PI-->>AG: 200 graph
+  AG-->>GW: response id=42: 200 graph
+  GW-->>API: 200 graph
+  API-->>UI: 200 graph

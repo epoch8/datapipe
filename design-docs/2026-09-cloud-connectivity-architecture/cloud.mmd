@@ -1,0 +1,32 @@
+flowchart LR
+  subgraph browser["User's Browser"]
+    ui["Dashboard UI"]
+  end
+  subgraph cloud["Cloud"]
+    backend["Dashboard API"]
+    gateway["Gateway"]
+    obs_api["Observability API<br/>and log storage"]
+  end
+  subgraph onprem["On-prem environment"]
+    subgraph agent["Agent: opens outbound connection"]
+      proxy["Visualization proxy"]
+      run_api["Run API"]
+      fwd["Log forwarder"]
+    end
+    subgraph pipeline["Pipeline instances"]
+      vis_api["Visualization API"]
+    end
+  end
+
+  ui -->|observability| backend --> obs_api
+  obs_api ~~~ fwd
+  ui -->|visualization| backend --> gateway --> proxy -->|"starts instance<br/>if needed"| vis_api
+  ui -->|run| backend --> gateway --> run_api
+  run_api -.->|starts run processes| pipeline
+  fwd -.->|collects logs| pipeline
+  fwd -.->|forwards logs| obs_api
+  agent -.->|"connects to<br/>the gateway"| gateway
+
+  linkStyle 0,1,11,12 stroke:#16a34a,stroke-width:2px
+  linkStyle 3,4,5,6 stroke:#2563eb,stroke-width:2px
+  linkStyle 7,8,9 stroke:#ea580c,stroke-width:2px
