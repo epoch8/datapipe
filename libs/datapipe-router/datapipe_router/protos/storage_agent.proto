@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package datapipe;
+
+import "storage_client.proto";
+
+service StorageDatapipeService {
+  rpc SendLogs(SendLogsRequest) returns (SendLogsResponse);
+  rpc SendRunStatus(SendRunStatusRequest) returns (SendRunStatusResponse);
+}
+
+message SendLogsRequest{
+  string run_id = 1;
+  LogEvent log = 2;
+}
+
+message SendLogsResponse{
+  string state = 1;
+}
+
+message SendRunStatusRequest{
+  string run_id = 1;
+  StatusEvent status = 2;
+}
+
+message SendRunStatusResponse{
+  string state = 1;
+}

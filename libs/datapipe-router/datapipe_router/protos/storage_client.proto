@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package datapipe;
+
+
+service StorageClientService {
+  rpc GetRunLogs(GetRunLogsRequest) returns (GetRunLogsResponse);
+  rpc GetRunStatuses(GetRunStatusesRequest) returns (GetRunStatusesResponse);
+  rpc GetRunLogsStream(GetRunLogsStreamResponse) returns (stream GetRunLogsStreamResponse);
+  rpc GetRunStatuseStream(GetRunStatusesStreamRequest) returns (stream GetRunStatusesStreamResponse);
+}
+
+message LogEvent {
+    float timestamp = 1;
+    int64 sequence = 2;
+    string log = 3;
+}
+
+message StatusEvent {
+    float timestamp = 1;
+    string status = 2;
+} 
+
+
+message GetRunLogsRequest {
+    string run_id = 1;
+}
+
+message GetRunLogsResponse {
+    repeated LogEvent logs = 1;
+}
+
+message GetRunStatusesRequest {
+    string run_id = 1;
+}
+
+message GetRunStatusesResponse {
+    repeated StatusEvent statuses = 1;
+}
+
+message GetRunLogsStreamRequest {
+    string run_id = 1;
+}
+
+message GetRunLogsStreamResponse {
+    LogEvent log = 1;
+}
+
+message GetRunStatusesStreamRequest {
+    string run_id = 1;
+}
+
+message GetRunStatusesStreamResponse {
+    StatusEvent status = 1;
+}

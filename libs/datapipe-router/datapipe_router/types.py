@@ -1,22 +1,32 @@
 from typing import List, Dict, Optional, Self, Any
 from dataclasses import dataclass, field
+from enum import Enum
 
 import io
 import pyarrow as pa
 import pyarrow.parquet as pq
  
-
-
-from  datapipe_router.pb2.client_pb2 import (
-    GetGraphResponse,
-    GetDataResponse,
+from  datapipe_router.pb2.router_client_pb2 import (
+    GraphData,
+    TableData as MessageTableData,
     PipelineNodeDetails,
     PipelineStepDetail,
     MetaStepDetail,
     LabelsItem,
     TableDetails,
-    TableColumn as MessageTableColumn
+    TableColumn as MessageTableColumn,
+    ChangeList as ChangeListMessage
 )
+
+
+class RUN_STATUSES(Enum):
+    CREATED = "Created"
+    PENDING = "Pending"
+    RUNNING = "Running"
+    FINISHED = "Finished"
+    FAILED = "Failed"
+    CANCELED = "Canceled"
+    UNKNOWN = "Unknown"
 
 
 @dataclass
@@ -151,7 +161,7 @@ class Graph:
     stages: List[str] = field(default_factory=list) 
 
     @classmethod
-    def from_message(cls, response: GetGraphResponse) -> Self:
+    def from_message(cls, response: GraphData) -> Self:
         pipeline = []
 
         for node in response.pipeline:
@@ -169,8 +179,8 @@ class Graph:
             stages=list(response.stages)
         )
 
-    def to_message(self) -> GetGraphResponse:
-        return GetGraphResponse(
+    def to_message(self) -> GraphData:
+        return GraphData(
             catalog={name: node.to_message() for name, node in self.catalog.items()},
             pipeline=[node.to_message() for node in self.pipeline],
             stages=self.stages
@@ -217,7 +227,7 @@ class TableData:
     total: Optional[int] = None
 
     @classmethod
-    def from_message(cls, response: GetDataResponse) -> Self:
+    def from_message(cls, response: MessageTableData) -> Self:
         try:
             buffer = io.BytesIO(response.data)
             data = pq.read_table(buffer)
@@ -231,15 +241,61 @@ class TableData:
             total = response.total
         )
     
-    def to_message(self) -> GetDataResponse:
+    def to_message(self) -> MessageTableData:
         buffer = io.BytesIO()
         
         pq.write_table(self.data, buffer)
         buffer.seek(0)
 
-        return GetDataResponse(
+        return MessageTableData(
             page = self.page,
             page_size = self.page_size,
             data = buffer.read(),
             total = self.total
         )
+
+
+@dataclass
+class ChangeList:
+    table: str
+    index: pa.Table
+
+    @classmethod
+    def from_message(cls, response: ChangeListMessage) -> Self:
+        try:
+            buffer = io.BytesIO(response.index)
+            index = pq.read_table(buffer)
+        except:
+            return None
+            
+        return cls(
+            table = response.table,
+            index = index,
+        )
+
+    def to_message(self) -> ChangeListMessage:
+        buffer = io.BytesIO()
+                
+        pq.write_table(self.index, buffer)
+        buffer.seek(0)
+
+        return ChangeListMessage(
+            table = self.table,
+            index = buffer.read(),
+        )
+
+
+@dataclass
+class Event:
+    timestamp: float
+
+
+@dataclass
+class StatusEvent(Event):
+    status: str
+
+
+@dataclass
+class LogEvent(Event):
+    sequence: int
+    lof: str

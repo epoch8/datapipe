@@ -17,6 +17,11 @@ dependencies = [
     "protobuf>=6.31.1, <7.0.0",
 ]
 
+[project.optional-dependencies]
+redis = [
+    "redis>=4.6.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

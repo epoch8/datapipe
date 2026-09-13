@@ -1,0 +1,14 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: datapipe-job
+spec:
+  podReplacementPolicy: Failed
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: image
+          command: []
+      restartPolicy: Never
+  backoffLimit: 4

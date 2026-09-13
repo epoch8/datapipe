@@ -89,12 +89,8 @@ class ServerDataStore:
         if self.dbconn.schema:
             self.sqla_metadata.schema = self.dbconn.schema
         
-    async def add_log_record(self, run_id: str, log_record: str):
+    async def get_backends(self):
         pass
 
-    async def set_status(self, run_id: str, status: str):
+    async def get_agents(self):
         pass
-
-    async def create_run(self, agent_id: str) -> PipelineRun:
-        run_id = str(uuid.uuid4())
-        return PipelineRun(run_id, agent_id)

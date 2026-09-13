@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import agent_pb2 as agent__pb2
+import router_agent_pb2 as router__agent__pb2
 
 GRPC_GENERATED_VERSION = '1.73.0'
 GRPC_VERSION = grpc.__version__
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in agent_pb2_grpc.py depends on'
+        + f' but the generated code in router_agent_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class DatapipeServiceStub(object):
+class RouterDatapipeServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -35,38 +35,33 @@ class DatapipeServiceStub(object):
             channel: A grpc.Channel.
         """
         self.GetStreamServerEvents = channel.unary_stream(
-                '/datapipe.DatapipeService/GetStreamServerEvents',
-                request_serializer=agent__pb2.ServerEventsRequest.SerializeToString,
-                response_deserializer=agent__pb2.ServerEventsResponse.FromString,
+                '/datapipe.RouterDatapipeService/GetStreamServerEvents',
+                request_serializer=router__agent__pb2.ServerEventsRequest.SerializeToString,
+                response_deserializer=router__agent__pb2.ServerEventsResponse.FromString,
                 _registered_method=True)
         self.SendData = channel.unary_unary(
-                '/datapipe.DatapipeService/SendData',
-                request_serializer=agent__pb2.SendDataRequest.SerializeToString,
-                response_deserializer=agent__pb2.SendDataResponse.FromString,
+                '/datapipe.RouterDatapipeService/SendData',
+                request_serializer=router__agent__pb2.SendDataRequest.SerializeToString,
+                response_deserializer=router__agent__pb2.SendDataResponse.FromString,
                 _registered_method=True)
         self.SendGraph = channel.unary_unary(
-                '/datapipe.DatapipeService/SendGraph',
-                request_serializer=agent__pb2.SendGraphRequest.SerializeToString,
-                response_deserializer=agent__pb2.SendGraphResponse.FromString,
+                '/datapipe.RouterDatapipeService/SendGraph',
+                request_serializer=router__agent__pb2.SendGraphRequest.SerializeToString,
+                response_deserializer=router__agent__pb2.SendGraphResponse.FromString,
                 _registered_method=True)
-        self.SendLogs = channel.unary_unary(
-                '/datapipe.DatapipeService/SendLogs',
-                request_serializer=agent__pb2.SendLogsRequest.SerializeToString,
-                response_deserializer=agent__pb2.SendLogsResponse.FromString,
-                _registered_method=True)
-        self.SendRunStatus = channel.unary_unary(
-                '/datapipe.DatapipeService/SendRunStatus',
-                request_serializer=agent__pb2.SendRunStatusRequest.SerializeToString,
-                response_deserializer=agent__pb2.SendRunStatusResponse.FromString,
+        self.SendRunCreationStatus = channel.unary_unary(
+                '/datapipe.RouterDatapipeService/SendRunCreationStatus',
+                request_serializer=router__agent__pb2.SendRunCreationStatusRequest.SerializeToString,
+                response_deserializer=router__agent__pb2.SendRunCreationStatusResponse.FromString,
                 _registered_method=True)
         self.SendPing = channel.unary_unary(
-                '/datapipe.DatapipeService/SendPing',
-                request_serializer=agent__pb2.PingRequest.SerializeToString,
-                response_deserializer=agent__pb2.PingResponse.FromString,
+                '/datapipe.RouterDatapipeService/SendPing',
+                request_serializer=router__agent__pb2.PingRequest.SerializeToString,
+                response_deserializer=router__agent__pb2.PingResponse.FromString,
                 _registered_method=True)
 
 
-class DatapipeServiceServicer(object):
+class RouterDatapipeServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def GetStreamServerEvents(self, request, context):
@@ -87,13 +82,7 @@ class DatapipeServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def SendLogs(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SendRunStatus(self, request, context):
+    def SendRunCreationStatus(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -106,47 +95,42 @@ class DatapipeServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
 
-def add_DatapipeServiceServicer_to_server(servicer, server):
+def add_RouterDatapipeServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'GetStreamServerEvents': grpc.unary_stream_rpc_method_handler(
                     servicer.GetStreamServerEvents,
-                    request_deserializer=agent__pb2.ServerEventsRequest.FromString,
-                    response_serializer=agent__pb2.ServerEventsResponse.SerializeToString,
+                    request_deserializer=router__agent__pb2.ServerEventsRequest.FromString,
+                    response_serializer=router__agent__pb2.ServerEventsResponse.SerializeToString,
             ),
             'SendData': grpc.unary_unary_rpc_method_handler(
                     servicer.SendData,
-                    request_deserializer=agent__pb2.SendDataRequest.FromString,
-                    response_serializer=agent__pb2.SendDataResponse.SerializeToString,
+                    request_deserializer=router__agent__pb2.SendDataRequest.FromString,
+                    response_serializer=router__agent__pb2.SendDataResponse.SerializeToString,
             ),
             'SendGraph': grpc.unary_unary_rpc_method_handler(
                     servicer.SendGraph,
-                    request_deserializer=agent__pb2.SendGraphRequest.FromString,
-                    response_serializer=agent__pb2.SendGraphResponse.SerializeToString,
+                    request_deserializer=router__agent__pb2.SendGraphRequest.FromString,
+                    response_serializer=router__agent__pb2.SendGraphResponse.SerializeToString,
             ),
-            'SendLogs': grpc.unary_unary_rpc_method_handler(
-                    servicer.SendLogs,
-                    request_deserializer=agent__pb2.SendLogsRequest.FromString,
-                    response_serializer=agent__pb2.SendLogsResponse.SerializeToString,
-            ),
-            'SendRunStatus': grpc.unary_unary_rpc_method_handler(
-                    servicer.SendRunStatus,
-                    request_deserializer=agent__pb2.SendRunStatusRequest.FromString,
-                    response_serializer=agent__pb2.SendRunStatusResponse.SerializeToString,
+            'SendRunCreationStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.SendRunCreationStatus,
+                    request_deserializer=router__agent__pb2.SendRunCreationStatusRequest.FromString,
+                    response_serializer=router__agent__pb2.SendRunCreationStatusResponse.SerializeToString,
             ),
             'SendPing': grpc.unary_unary_rpc_method_handler(
                     servicer.SendPing,
-                    request_deserializer=agent__pb2.PingRequest.FromString,
-                    response_serializer=agent__pb2.PingResponse.SerializeToString,
+                    request_deserializer=router__agent__pb2.PingRequest.FromString,
+                    response_serializer=router__agent__pb2.PingResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'datapipe.DatapipeService', rpc_method_handlers)
+            'datapipe.RouterDatapipeService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('datapipe.DatapipeService', rpc_method_handlers)
+    server.add_registered_method_handlers('datapipe.RouterDatapipeService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class DatapipeService(object):
+class RouterDatapipeService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -163,9 +147,9 @@ class DatapipeService(object):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/datapipe.DatapipeService/GetStreamServerEvents',
-            agent__pb2.ServerEventsRequest.SerializeToString,
-            agent__pb2.ServerEventsResponse.FromString,
+            '/datapipe.RouterDatapipeService/GetStreamServerEvents',
+            router__agent__pb2.ServerEventsRequest.SerializeToString,
+            router__agent__pb2.ServerEventsResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -190,9 +174,9 @@ class DatapipeService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/datapipe.DatapipeService/SendData',
-            agent__pb2.SendDataRequest.SerializeToString,
-            agent__pb2.SendDataResponse.FromString,
+            '/datapipe.RouterDatapipeService/SendData',
+            router__agent__pb2.SendDataRequest.SerializeToString,
+            router__agent__pb2.SendDataResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -217,9 +201,9 @@ class DatapipeService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/datapipe.DatapipeService/SendGraph',
-            agent__pb2.SendGraphRequest.SerializeToString,
-            agent__pb2.SendGraphResponse.FromString,
+            '/datapipe.RouterDatapipeService/SendGraph',
+            router__agent__pb2.SendGraphRequest.SerializeToString,
+            router__agent__pb2.SendGraphResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -231,7 +215,7 @@ class DatapipeService(object):
             _registered_method=True)
 
     @staticmethod
-    def SendLogs(request,
+    def SendRunCreationStatus(request,
             target,
             options=(),
             channel_credentials=None,
@@ -244,36 +228,9 @@ class DatapipeService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/datapipe.DatapipeService/SendLogs',
-            agent__pb2.SendLogsRequest.SerializeToString,
-            agent__pb2.SendLogsResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SendRunStatus(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/datapipe.DatapipeService/SendRunStatus',
-            agent__pb2.SendRunStatusRequest.SerializeToString,
-            agent__pb2.SendRunStatusResponse.FromString,
+            '/datapipe.RouterDatapipeService/SendRunCreationStatus',
+            router__agent__pb2.SendRunCreationStatusRequest.SerializeToString,
+            router__agent__pb2.SendRunCreationStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -298,9 +255,9 @@ class DatapipeService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/datapipe.DatapipeService/SendPing',
-            agent__pb2.PingRequest.SerializeToString,
-            agent__pb2.PingResponse.FromString,
+            '/datapipe.RouterDatapipeService/SendPing',
+            router__agent__pb2.PingRequest.SerializeToString,
+            router__agent__pb2.PingResponse.FromString,
             options,
             channel_credentials,
             insecure,

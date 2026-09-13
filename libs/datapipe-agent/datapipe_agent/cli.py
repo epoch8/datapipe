@@ -3,23 +3,29 @@ import sys
 import os
 
 from datapipe.compute import DatapipeApp
-from datapipe_agent import DatapipeAgent
+from datapipe_agent import DatapipeAgent, AgentSettings
 
 
 def register_commands(cli: click.Group):
     @cli.command()
     @click.option("--name", type=click.STRING, default="datapipe-agent")
-    @click.option("--host", type=click.STRING, default="0.0.0.0")
-    @click.option("--port", type=click.INT, default=8000)
+    @click.option("--router_host", type=click.STRING, default=None)
+    @click.option("--router_port", type=click.INT, default=None)
+    @click.option("--storage_host", type=click.STRING, default=None)
+    @click.option("--storage_port", type=click.INT, default=None)
+    @click.option("--runner_type", type=click.STRING, default=None)
+    @click.option("--namespace", type=click.STRING, default=None)
+    @click.option("--image", type=click.STRING, default=None)
+    @click.option("--tag", type=click.STRING, default=None)
+    @click.option("--job-prefix", type=click.STRING, default=None)
+
     @click.pass_context
-    def agent(ctx: click.Context, name:str,  host: str, port: int) -> None:
+    def agent(ctx: click.Context, *args, **kwargs) -> None:
         app: DatapipeApp = ctx.obj["pipeline"]
-        agent: DatapipeAgent = DatapipeAgent(
-            app, 
-            name=os.environ.get("DATAPIPE_AGENT_NAME", name), 
-            server_host=os.environ.get("DATAPIPE_SERVER_HOST", host), 
-            server_port=os.environ.get("DATAPIPE_SERVER_PORT", port)
-        )
+        defaults = {k: v for k,v in kwargs.items() if v is not None}
+        settings: AgentSettings = AgentSettings.from_env(**defaults)
+
+        agent: DatapipeAgent = DatapipeAgent(app, settings)
 
         import asyncio
 

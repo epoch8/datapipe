@@ -3,37 +3,22 @@ import sys
 import os
 import logging
 
-from datapipe_agent.runners.base import StatusEvent, LogEvent, RUN_STATUSES
+from datapipe_agent.runners.base import BaseRunner
+from datapipe_router.types import RUN_STATUSES
 
 
-logger = logging.getLogger("datapipe_cloud.agent")
+logger = logging.getLogger("datapipe_agent")
 
 
-class LocalRunner:
-    def __init__(self, run_id: str, status_queue: asyncio.Queue, log_queue: asyncio.Queue):
-        self.run_id = run_id
-        self.status_queue = status_queue
-        self.log_queue = log_queue
-
-        self.status = RUN_STATUSES.CREATED
-
-    async def set_status(self, status: RUN_STATUSES):
-        self.status = status
-
-        await self.status_queue.put(
-            StatusEvent(
-                run_id=self.run_id,
-                status=status.value
-            )
-        )
-
-    async def set_log(self, log: str):
-        await self.log_queue.put(
-            LogEvent(
-                run_id=self.run_id,
-                log=log
-            )
-        )
+class LocalRunner(BaseRunner):
+    def __init__(
+        self, 
+        run_id: str, 
+        status_queue: asyncio.Queue, 
+        log_queue: asyncio.Queue,
+        labels: list[tuple[str, str]] = None,
+    ):
+        super().__init__(run_id, status_queue, log_queue, labels=labels)
 
     async def read_stream(self, stream):
         while True:
@@ -43,6 +28,9 @@ class LocalRunner:
                 break
 
             await self.set_log(line.decode().strip())
+
+    async def init(self):
+        pass
 
     async def run(self):
         logger.info(f"({self.run_id}) Pipeline runned")

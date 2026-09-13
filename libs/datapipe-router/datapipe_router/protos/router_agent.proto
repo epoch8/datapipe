@@ -2,14 +2,13 @@ syntax = "proto3";
 
 package datapipe;
 
-import "client.proto";
+import "router_client.proto";
 
-service DatapipeService {
+service RouterDatapipeService {
   rpc GetStreamServerEvents(ServerEventsRequest) returns (stream ServerEventsResponse);
   rpc SendData(SendDataRequest) returns (SendDataResponse);
   rpc SendGraph(SendGraphRequest) returns (SendGraphResponse);
-  rpc SendLogs(SendLogsRequest) returns (SendLogsResponse);
-  rpc SendRunStatus(SendRunStatusRequest) returns (SendRunStatusResponse);
+  rpc SendRunCreationStatus(SendRunCreationStatusRequest) returns (SendRunCreationStatusResponse);
   rpc SendPing(PingRequest) returns (PingResponse);
 }
 
@@ -23,7 +22,10 @@ message DataEvent {
 }
 
 message RunEvent {
-  string run_id = 1;
+  string route_id = 1;
+  string run_id = 2;
+  repeated LabelsItem labels = 3;
+  repeated ChangeList changelist = 4;
 }
 
 message PingEvent {
@@ -48,29 +50,11 @@ message ServerEventsResponse {
 
 message SendDataRequest{
   string route_id = 1;
-  GetDataResponse data = 2;
+  TableData data = 2;
 }
 
 message SendDataResponse{
   string status = 1;
-}
-
-message SendLogsRequest{
-  string run_id = 1;
-  string log = 2;
-}
-
-message SendLogsResponse{
-  string state = 1;
-}
-
-message SendRunStatusRequest{
-  string run_id = 1;
-  string status = 2;
-}
-
-message SendRunStatusResponse{
-  string state = 1;
 }
 
 message PingRequest {
@@ -84,9 +68,19 @@ message PingResponse {
 
 message SendGraphRequest {
   string route_id = 1;
-  GetGraphResponse data = 2;
+  GraphData data = 2;
 }
 
 message SendGraphResponse {
   string status = 1;
+}
+
+message SendRunCreationStatusRequest{
+  string route_id = 1;
+  string state = 2;
+  string error = 3;
+}
+
+message SendRunCreationStatusResponse{
+  string state = 1;
 }

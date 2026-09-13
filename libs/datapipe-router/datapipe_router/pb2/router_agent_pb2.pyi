@@ -1,7 +1,8 @@
-import client_pb2 as _client_pb2
+import router_client_pb2 as _router_client_pb2
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Mapping as _Mapping
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
 from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
@@ -17,14 +18,20 @@ class DataEvent(_message.Message):
     ROUTE_ID_FIELD_NUMBER: _ClassVar[int]
     REQUEST_FIELD_NUMBER: _ClassVar[int]
     route_id: str
-    request: _client_pb2.GetDataRequest
-    def __init__(self, route_id: _Optional[str] = ..., request: _Optional[_Union[_client_pb2.GetDataRequest, _Mapping]] = ...) -> None: ...
+    request: _router_client_pb2.GetDataRequest
+    def __init__(self, route_id: _Optional[str] = ..., request: _Optional[_Union[_router_client_pb2.GetDataRequest, _Mapping]] = ...) -> None: ...
 
 class RunEvent(_message.Message):
-    __slots__ = ("run_id",)
+    __slots__ = ("route_id", "run_id", "labels", "changelist")
+    ROUTE_ID_FIELD_NUMBER: _ClassVar[int]
     RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    LABELS_FIELD_NUMBER: _ClassVar[int]
+    CHANGELIST_FIELD_NUMBER: _ClassVar[int]
+    route_id: str
     run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
+    labels: _containers.RepeatedCompositeFieldContainer[_router_client_pb2.LabelsItem]
+    changelist: _containers.RepeatedCompositeFieldContainer[_router_client_pb2.ChangeList]
+    def __init__(self, route_id: _Optional[str] = ..., run_id: _Optional[str] = ..., labels: _Optional[_Iterable[_Union[_router_client_pb2.LabelsItem, _Mapping]]] = ..., changelist: _Optional[_Iterable[_Union[_router_client_pb2.ChangeList, _Mapping]]] = ...) -> None: ...
 
 class PingEvent(_message.Message):
     __slots__ = ()
@@ -59,42 +66,14 @@ class SendDataRequest(_message.Message):
     ROUTE_ID_FIELD_NUMBER: _ClassVar[int]
     DATA_FIELD_NUMBER: _ClassVar[int]
     route_id: str
-    data: _client_pb2.GetDataResponse
-    def __init__(self, route_id: _Optional[str] = ..., data: _Optional[_Union[_client_pb2.GetDataResponse, _Mapping]] = ...) -> None: ...
+    data: _router_client_pb2.TableData
+    def __init__(self, route_id: _Optional[str] = ..., data: _Optional[_Union[_router_client_pb2.TableData, _Mapping]] = ...) -> None: ...
 
 class SendDataResponse(_message.Message):
     __slots__ = ("status",)
     STATUS_FIELD_NUMBER: _ClassVar[int]
     status: str
     def __init__(self, status: _Optional[str] = ...) -> None: ...
-
-class SendLogsRequest(_message.Message):
-    __slots__ = ("run_id", "log")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    LOG_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    log: str
-    def __init__(self, run_id: _Optional[str] = ..., log: _Optional[str] = ...) -> None: ...
-
-class SendLogsResponse(_message.Message):
-    __slots__ = ("state",)
-    STATE_FIELD_NUMBER: _ClassVar[int]
-    state: str
-    def __init__(self, state: _Optional[str] = ...) -> None: ...
-
-class SendRunStatusRequest(_message.Message):
-    __slots__ = ("run_id", "status")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    STATUS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    status: str
-    def __init__(self, run_id: _Optional[str] = ..., status: _Optional[str] = ...) -> None: ...
-
-class SendRunStatusResponse(_message.Message):
-    __slots__ = ("state",)
-    STATE_FIELD_NUMBER: _ClassVar[int]
-    state: str
-    def __init__(self, state: _Optional[str] = ...) -> None: ...
 
 class PingRequest(_message.Message):
     __slots__ = ("name",)
@@ -115,11 +94,27 @@ class SendGraphRequest(_message.Message):
     ROUTE_ID_FIELD_NUMBER: _ClassVar[int]
     DATA_FIELD_NUMBER: _ClassVar[int]
     route_id: str
-    data: _client_pb2.GetGraphResponse
-    def __init__(self, route_id: _Optional[str] = ..., data: _Optional[_Union[_client_pb2.GetGraphResponse, _Mapping]] = ...) -> None: ...
+    data: _router_client_pb2.GraphData
+    def __init__(self, route_id: _Optional[str] = ..., data: _Optional[_Union[_router_client_pb2.GraphData, _Mapping]] = ...) -> None: ...
 
 class SendGraphResponse(_message.Message):
     __slots__ = ("status",)
     STATUS_FIELD_NUMBER: _ClassVar[int]
     status: str
     def __init__(self, status: _Optional[str] = ...) -> None: ...
+
+class SendRunCreationStatusRequest(_message.Message):
+    __slots__ = ("route_id", "state", "error")
+    ROUTE_ID_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    route_id: str
+    state: str
+    error: str
+    def __init__(self, route_id: _Optional[str] = ..., state: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
+
+class SendRunCreationStatusResponse(_message.Message):
+    __slots__ = ("state",)
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    state: str
+    def __init__(self, state: _Optional[str] = ...) -> None: ...

@@ -6,6 +6,16 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class GetAgentsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetAgentsResponse(_message.Message):
+    __slots__ = ("agents",)
+    AGENTS_FIELD_NUMBER: _ClassVar[int]
+    agents: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, agents: _Optional[_Iterable[str]] = ...) -> None: ...
+
 class GetDataRequest(_message.Message):
     __slots__ = ("agent_id", "table", "page", "page_size", "order", "include_total", "order_by", "filters", "focus")
     AGENT_ID_FIELD_NUMBER: _ClassVar[int]
@@ -28,7 +38,7 @@ class GetDataRequest(_message.Message):
     focus: _containers.RepeatedScalarFieldContainer[bytes]
     def __init__(self, agent_id: _Optional[str] = ..., table: _Optional[str] = ..., page: _Optional[int] = ..., page_size: _Optional[int] = ..., order: _Optional[str] = ..., include_total: bool = ..., order_by: _Optional[str] = ..., filters: _Optional[bytes] = ..., focus: _Optional[_Iterable[bytes]] = ...) -> None: ...
 
-class GetDataResponse(_message.Message):
+class TableData(_message.Message):
     __slots__ = ("page", "page_size", "data", "total")
     PAGE_FIELD_NUMBER: _ClassVar[int]
     PAGE_SIZE_FIELD_NUMBER: _ClassVar[int]
@@ -40,71 +50,11 @@ class GetDataResponse(_message.Message):
     total: int
     def __init__(self, page: _Optional[int] = ..., page_size: _Optional[int] = ..., data: _Optional[bytes] = ..., total: _Optional[int] = ...) -> None: ...
 
-class GetAgentsRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class GetAgentsResponse(_message.Message):
-    __slots__ = ("agents",)
-    AGENTS_FIELD_NUMBER: _ClassVar[int]
-    agents: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, agents: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class RunPipelineRequest(_message.Message):
-    __slots__ = ("agent_id",)
-    AGENT_ID_FIELD_NUMBER: _ClassVar[int]
-    agent_id: str
-    def __init__(self, agent_id: _Optional[str] = ...) -> None: ...
-
-class RunPipelineResponse(_message.Message):
-    __slots__ = ("run_id",)
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
-
-class GetRunListRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
-
-class RunInfo(_message.Message):
-    __slots__ = ("run_id", "agent_id", "status")
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    AGENT_ID_FIELD_NUMBER: _ClassVar[int]
-    STATUS_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    agent_id: str
-    status: str
-    def __init__(self, run_id: _Optional[str] = ..., agent_id: _Optional[str] = ..., status: _Optional[str] = ...) -> None: ...
-
-class GetRunListResponse(_message.Message):
-    __slots__ = ("runs",)
-    RUNS_FIELD_NUMBER: _ClassVar[int]
-    runs: _containers.RepeatedCompositeFieldContainer[RunInfo]
-    def __init__(self, runs: _Optional[_Iterable[_Union[RunInfo, _Mapping]]] = ...) -> None: ...
-
-class GetRunLogsRequest(_message.Message):
-    __slots__ = ("run_id",)
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
-
-class GetRunLogsResponse(_message.Message):
-    __slots__ = ("logs",)
-    LOGS_FIELD_NUMBER: _ClassVar[int]
-    logs: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, logs: _Optional[_Iterable[str]] = ...) -> None: ...
-
-class GetRunLogsStreamRequest(_message.Message):
-    __slots__ = ("run_id",)
-    RUN_ID_FIELD_NUMBER: _ClassVar[int]
-    run_id: str
-    def __init__(self, run_id: _Optional[str] = ...) -> None: ...
-
-class GetRunLogsStreamResponse(_message.Message):
-    __slots__ = ("logs",)
-    LOGS_FIELD_NUMBER: _ClassVar[int]
-    logs: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, logs: _Optional[_Iterable[str]] = ...) -> None: ...
+class GetDataResponse(_message.Message):
+    __slots__ = ("data",)
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    data: TableData
+    def __init__(self, data: _Optional[_Union[TableData, _Mapping]] = ...) -> None: ...
 
 class GetGraphRequest(_message.Message):
     __slots__ = ("agent_id", "label_key", "value")
@@ -194,7 +144,7 @@ class PipelineNodeDetails(_message.Message):
     meta_step: MetaStepDetail
     def __init__(self, pipeline_step: _Optional[_Union[PipelineStepDetail, _Mapping]] = ..., meta_step: _Optional[_Union[MetaStepDetail, _Mapping]] = ...) -> None: ...
 
-class GetGraphResponse(_message.Message):
+class GraphData(_message.Message):
     __slots__ = ("catalog", "pipeline", "stages")
     class CatalogEntry(_message.Message):
         __slots__ = ("key", "value")
@@ -210,3 +160,57 @@ class GetGraphResponse(_message.Message):
     pipeline: _containers.RepeatedCompositeFieldContainer[PipelineNodeDetails]
     stages: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, catalog: _Optional[_Mapping[str, TableDetails]] = ..., pipeline: _Optional[_Iterable[_Union[PipelineNodeDetails, _Mapping]]] = ..., stages: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class GetGraphResponse(_message.Message):
+    __slots__ = ("data",)
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    data: GraphData
+    def __init__(self, data: _Optional[_Union[GraphData, _Mapping]] = ...) -> None: ...
+
+class ChangeList(_message.Message):
+    __slots__ = ("table", "index")
+    TABLE_FIELD_NUMBER: _ClassVar[int]
+    INDEX_FIELD_NUMBER: _ClassVar[int]
+    table: str
+    index: bytes
+    def __init__(self, table: _Optional[str] = ..., index: _Optional[bytes] = ...) -> None: ...
+
+class RunPipelineRequest(_message.Message):
+    __slots__ = ("agent_id", "run_id", "labels", "changelist")
+    AGENT_ID_FIELD_NUMBER: _ClassVar[int]
+    RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    LABELS_FIELD_NUMBER: _ClassVar[int]
+    CHANGELIST_FIELD_NUMBER: _ClassVar[int]
+    agent_id: str
+    run_id: str
+    labels: _containers.RepeatedCompositeFieldContainer[LabelsItem]
+    changelist: _containers.RepeatedCompositeFieldContainer[ChangeList]
+    def __init__(self, agent_id: _Optional[str] = ..., run_id: _Optional[str] = ..., labels: _Optional[_Iterable[_Union[LabelsItem, _Mapping]]] = ..., changelist: _Optional[_Iterable[_Union[ChangeList, _Mapping]]] = ...) -> None: ...
+
+class RunPipelineResponse(_message.Message):
+    __slots__ = ("run_id", "status", "error")
+    RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    run_id: str
+    status: str
+    error: str
+    def __init__(self, run_id: _Optional[str] = ..., status: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
+
+class CancelPipelineRequest(_message.Message):
+    __slots__ = ("agent_id", "run_id")
+    AGENT_ID_FIELD_NUMBER: _ClassVar[int]
+    RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    agent_id: str
+    run_id: str
+    def __init__(self, agent_id: _Optional[str] = ..., run_id: _Optional[str] = ...) -> None: ...
+
+class CancelPipelineResponse(_message.Message):
+    __slots__ = ("run_id", "status", "error")
+    RUN_ID_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    run_id: str
+    status: str
+    error: str
+    def __init__(self, run_id: _Optional[str] = ..., status: _Optional[str] = ..., error: _Optional[str] = ...) -> None: ...
