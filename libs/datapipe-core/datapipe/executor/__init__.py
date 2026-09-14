@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Generator, Protocol
 
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, IndexDF
+from datapipe.types import ChangeList, ProcessItem
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeStep
@@ -14,7 +14,7 @@ class ProcessFn(Protocol):
     def __call__(
         self,
         ds: DataStore,
-        idx: IndexDF,
+        idx: ProcessItem,
         run_config: RunConfig | None = None,
     ) -> ChangeList: ...
 
@@ -35,7 +35,7 @@ class Executor(ABC):
         step: "ComputeStep",
         ds: DataStore,
         idx_count: int,
-        idx_gen: Generator[IndexDF, None, None],
+        idx_gen: Generator[ProcessItem, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
@@ -48,7 +48,7 @@ class SingleThreadExecutor(Executor):
         step: "ComputeStep",
         ds: DataStore,
         idx_count: int,
-        idx_gen: Generator[IndexDF, None, None],
+        idx_gen: Generator[ProcessItem, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,

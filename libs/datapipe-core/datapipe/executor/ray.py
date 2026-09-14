@@ -7,7 +7,7 @@ import ray
 from datapipe.datatable import DataStore
 from datapipe.executor import Executor, ExecutorConfig, ProcessFn
 from datapipe.run_config import RunConfig
-from datapipe.types import ChangeList, IndexDF
+from datapipe.types import ChangeList, ProcessItem
 
 if TYPE_CHECKING:
     from datapipe.compute import ComputeStep
@@ -19,7 +19,7 @@ class RayExecutor(Executor):
         step: "ComputeStep",
         ds: DataStore,
         idx_count: int,
-        idx_gen: Generator[IndexDF, None, None],
+        idx_gen: Generator[ProcessItem, None, None],
         process_fn: ProcessFn,
         run_config: RunConfig | None = None,
         executor_config: ExecutorConfig | None = None,
@@ -52,7 +52,7 @@ class RayExecutor(Executor):
         remote_run_config = replace(run_config, callback=None) if run_config is not None else None
 
         # Generator to collect results as Ray futures resolve
-        def _results(idx_gen: Generator[IndexDF, None, None]) -> Generator[ChangeList, None, None]:
+        def _results(idx_gen: Generator[ProcessItem, None, None]) -> Generator[ChangeList, None, None]:
             # Submit tasks to remote functions using Ray
             futures: list[ray.ObjectRef[ChangeList]] = []
             for idx in idx_gen:
