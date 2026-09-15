@@ -10,10 +10,9 @@ from cv_pipeliner.metrics.detection import ImageDataMatching
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.executor import ExecutorConfig
@@ -743,10 +742,9 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
             ),
         )
         ground_truth_inputs = build_ground_truth_batch_inputs(self.input__image__ground_truth)
-        pipeline = Pipeline(
-            [
-                BatchTransform(
-                    func=wrap_ground_truth_inputs(
+        pipeline = [
+            BatchTransform(
+                func=wrap_ground_truth_inputs(
                         count_pipeline_metrics_on_image,
                         n_ground_truth_inputs=len(ground_truth_inputs),
                         primary_keys=self.primary_keys,
@@ -793,8 +791,7 @@ class CountMetrics_Subset_PipelineModel(PipelineStep):
                     chunk_size=1,
                 ),
             ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        return DatapipeApp(ds, catalog, pipeline).steps
 
 
 def get_classes_best_thresholds(
@@ -988,56 +985,54 @@ def _build_threshold_search_tail_compute(
                 ).table_store
             ),
         )
-    pipeline = Pipeline(
-        [
-            BatchTransform(
-                func=get_classes_best_thresholds,
-                inputs=[
-                    params.input__model,
-                    _required_with_keys(
-                        pipeline_output_as_input(params.output__pipeline_model__metrics_by_cls_and_thresholds),
-                        keys={key: key for key in params.model_primary_keys},
-                    ),
-                ],
-                outputs=[params.output__model_thresholds],
-                transform_keys=params.model_primary_keys,
-                chunk_size=params.chunk_size,
-                labels=params.labels,
-                order_by=params.model_primary_keys,
-                order="desc",
-                kwargs=dict(
-                    model_primary_keys=params.model_primary_keys,
-                    metric__name=params.metric__name,
-                    class_name_to_threshold__name=params.class_name_to_threshold__name,
-                    model_class_names__name=params.model_class_names__name,
-                    count_by_thresholds=params.count_by_thresholds,
-                    threshold_sort_values_ascending=params.threshold_sort_values_ascending,
+    pipeline = [
+        BatchTransform(
+            func=get_classes_best_thresholds,
+            inputs=[
+                params.input__model,
+                _required_with_keys(
+                    pipeline_output_as_input(params.output__pipeline_model__metrics_by_cls_and_thresholds),
+                    keys={key: key for key in params.model_primary_keys},
                 ),
-                executor_config=params.count_metrics_executor_config,
+            ],
+            outputs=[params.output__model_thresholds],
+            transform_keys=params.model_primary_keys,
+            chunk_size=params.chunk_size,
+            labels=params.labels,
+            order_by=params.model_primary_keys,
+            order="desc",
+            kwargs=dict(
+                model_primary_keys=params.model_primary_keys,
+                metric__name=params.metric__name,
+                class_name_to_threshold__name=params.class_name_to_threshold__name,
+                model_class_names__name=params.model_class_names__name,
+                count_by_thresholds=params.count_by_thresholds,
+                threshold_sort_values_ascending=params.threshold_sort_values_ascending,
             ),
-            BatchTransform(
-                func=filter_prediction_by_cls_best_thresholds,
-                inputs=[
-                    pipeline_output_as_input(params.output__prediction_raw),
-                    pipeline_output_as_input(params.output__model_thresholds),
-                ],
-                outputs=[params.output__prediction],
-                transform_keys=stable_unique(params.primary_keys + params.model_primary_keys),
-                chunk_size=params.chunk_size,
-                labels=params.labels,
-                order_by=params.model_primary_keys,
-                order="desc",
-                kwargs=dict(
-                    primary_keys=params.primary_keys,
-                    model_primary_keys=params.model_primary_keys,
-                    bbox_id__name=params.bbox_id__name,
-                    class_name_to_threshold__name=params.class_name_to_threshold__name,
-                ),
-                executor_config=params.count_metrics_executor_config,
+            executor_config=params.count_metrics_executor_config,
+        ),
+        BatchTransform(
+            func=filter_prediction_by_cls_best_thresholds,
+            inputs=[
+                pipeline_output_as_input(params.output__prediction_raw),
+                pipeline_output_as_input(params.output__model_thresholds),
+            ],
+            outputs=[params.output__prediction],
+            transform_keys=stable_unique(params.primary_keys + params.model_primary_keys),
+            chunk_size=params.chunk_size,
+            labels=params.labels,
+            order_by=params.model_primary_keys,
+            order="desc",
+            kwargs=dict(
+                primary_keys=params.primary_keys,
+                model_primary_keys=params.model_primary_keys,
+                bbox_id__name=params.bbox_id__name,
+                class_name_to_threshold__name=params.class_name_to_threshold__name,
             ),
-        ]
-    )
-    return build_compute(ds, catalog, pipeline)
+            executor_config=params.count_metrics_executor_config,
+        ),
+    ]
+    return DatapipeApp(ds, catalog, pipeline).steps
 
 
 @dataclass

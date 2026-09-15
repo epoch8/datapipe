@@ -8,10 +8,9 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -380,34 +379,32 @@ class FreezeDatasetStep(PipelineStep):
         )
 
         # build pipeline with generic freeze function
-        pipeline = Pipeline(
-            [
-                DatatableTransform(
-                    func=freeze_dataset,
-                    inputs=[
-                        pipeline_input_as_table(self.input__image),
-                        pipeline_input_as_table(self.input__subset__has__image),
-                        pipeline_input_as_table(self.input__image__ground_truth),
-                    ],
-                    outputs=[
-                        pipeline_output_as_table(self.output__frozen_dataset),
-                        pipeline_output_as_table(self.output__frozen_dataset__has__image_gt),
-                    ],
-                    kwargs={
-                        "model_type": self.model_type,
-                        "primary_keys": self.primary_keys,
-                        "min_delta": self.min_delta,
-                        "min_within_time": self.min_within_time,
-                        "working_dir": self.working_dir,
-                        "image__image_path__name": self.image__image_path__name,
-                        "frozen_dataset_primary_keys": self.frozen_dataset_primary_keys,
-                        "frozen_dataset_id__name": self.frozen_dataset_id__name,
-                        "bbox_id__name": self.bbox_id__name,
-                        "label_column_name": self.label_column_name,
-                        "extra_gt_columns": self.extra_gt_columns,
-                    },
-                    labels=self.labels,
-                )
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        pipeline = [
+            DatatableTransform(
+                func=freeze_dataset,
+                inputs=[
+                    pipeline_input_as_table(self.input__image),
+                    pipeline_input_as_table(self.input__subset__has__image),
+                    pipeline_input_as_table(self.input__image__ground_truth),
+                ],
+                outputs=[
+                    pipeline_output_as_table(self.output__frozen_dataset),
+                    pipeline_output_as_table(self.output__frozen_dataset__has__image_gt),
+                ],
+                kwargs={
+                    "model_type": self.model_type,
+                    "primary_keys": self.primary_keys,
+                    "min_delta": self.min_delta,
+                    "min_within_time": self.min_within_time,
+                    "working_dir": self.working_dir,
+                    "image__image_path__name": self.image__image_path__name,
+                    "frozen_dataset_primary_keys": self.frozen_dataset_primary_keys,
+                    "frozen_dataset_id__name": self.frozen_dataset_id__name,
+                    "bbox_id__name": self.bbox_id__name,
+                    "label_column_name": self.label_column_name,
+                    "extra_gt_columns": self.extra_gt_columns,
+                },
+                labels=self.labels,
+            )
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps

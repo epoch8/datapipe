@@ -6,7 +6,7 @@ from datapipe_cvat.cvat_step import CVATStep
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import String
 
-from datapipe.compute import Catalog, DatapipeApp, Pipeline, Table
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.update_external_table import UpdateExternalTable
@@ -62,39 +62,37 @@ def prepare_images(df: pd.DataFrame) -> pd.DataFrame:
     return df[["image_id", "task_queue_id", "image_path", "annotations"]]
 
 
-pipeline = Pipeline(
-    [
-        UpdateExternalTable(output="input_images"),
-        BatchTransform(
-            prepare_images,
-            inputs=["input_images"],
-            outputs=["image"],
-        ),
-        CVATStep(
-            input="image",
-            output__input_batches="image_batches",
-            output__cvat_task="cvat_task",
-            output__cvat_files="cvat_images",
-            task_sync_table="cvat_task_sync_table",
-            output__cvat_annotation="cvat_annotation",
-            file_path_column="image_path",
-            labels=[("stage", "cvat")],
-            minimum_files_in_job=FILES_BATCH,
-            files_batch=FILES_BATCH,
-            cvat_url=cvat_url,
-            cvat_credentials=cvat_credentials,
-            cvat_project_id=cvat_project_id,
-            cvat_organization=organization_slug,
-            primary_keys=["image_id", "task_queue_id"],
-            cloud_storage_bucket=None,
-            # If True, changed files are re-uploaded only when the existing CVAT frame
-            # has no annotations; annotated frames are kept to avoid losing manual work.
-            delete_unannotated_tasks_only_on_update=False,
-            task_queue_id__name="task_queue_id",
-            task_name_format="[{date:%Y-%m-%d}] TaskQueue:{task_queue_id} batch:{inner_task_id}",
-        )
-    ]
-)
+pipeline = [
+    UpdateExternalTable(output="input_images"),
+    BatchTransform(
+        prepare_images,
+        inputs=["input_images"],
+        outputs=["image"],
+    ),
+    CVATStep(
+        input="image",
+        output__input_batches="image_batches",
+        output__cvat_task="cvat_task",
+        output__cvat_files="cvat_images",
+        task_sync_table="cvat_task_sync_table",
+        output__cvat_annotation="cvat_annotation",
+        file_path_column="image_path",
+        labels=[("stage", "cvat")],
+        minimum_files_in_job=FILES_BATCH,
+        files_batch=FILES_BATCH,
+        cvat_url=cvat_url,
+        cvat_credentials=cvat_credentials,
+        cvat_project_id=cvat_project_id,
+        cvat_organization=organization_slug,
+        primary_keys=["image_id", "task_queue_id"],
+        cloud_storage_bucket=None,
+        # If True, changed files are re-uploaded only when the existing CVAT frame
+        # has no annotations; annotated frames are kept to avoid losing manual work.
+        delete_unannotated_tasks_only_on_update=False,
+        task_queue_id__name="task_queue_id",
+        task_name_format="[{date:%Y-%m-%d}] TaskQueue:{task_queue_id} batch:{inner_task_id}",
+    )
+]
 
 
 ds = DataStore(dbconn)

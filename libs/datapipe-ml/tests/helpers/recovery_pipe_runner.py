@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
         make_recovery_runtime,
         recovery_case_by_id,
     )
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
     from tests.helpers.training_smoke import run_pipeline
 
     os.environ[WORK_DIR_ENV] = str(workdir)
@@ -49,8 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         run_pipeline(runtime, steps)
         return 0
 
-    compute_steps = build_compute(runtime.ds, runtime.catalog, Pipeline(steps))
-    run_steps(runtime.ds, compute_steps[1:])
+    app = DatapipeApp(runtime.ds, runtime.catalog, steps)
+    app.run(steps=app.steps[1:])
     return 0
 
 

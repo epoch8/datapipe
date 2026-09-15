@@ -79,7 +79,7 @@ def _make_catalog(dbconn):
 
 def test_keypoints_inference_outputs_keypoints_and_scores(base_datastore, dbconn, smoke_dataset, monkeypatch):
     _require_runtime()
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     from datapipe_ml.inference import bbox_pipeline as bbox_pipeline_module
     from datapipe_ml.tasks.keypoints.inference import Inference_KeypointsModel
@@ -100,24 +100,22 @@ def test_keypoints_inference_outputs_keypoints_and_scores(base_datastore, dbconn
         )
     )
 
-    steps = build_compute(
+    app = DatapipeApp(
         base_datastore,
         catalog,
-        Pipeline(
-            [
-                Inference_KeypointsModel(
-                    input__image="image",
-                    input__keypoints_model="keypoints_model",
-                    output__keypoints_prediction="keypoints_prediction",
-                    primary_keys=["image_id"],
-                    bbox_id__name=None,
-                    create_table=True,
-                    chunk_size=1,
-                )
-            ]
-        ),
+        [
+            Inference_KeypointsModel(
+                input__image="image",
+                input__keypoints_model="keypoints_model",
+                output__keypoints_prediction="keypoints_prediction",
+                primary_keys=["image_id"],
+                bbox_id__name=None,
+                create_table=True,
+                chunk_size=1,
+            )
+        ],
     )
-    run_steps(base_datastore, steps)
+    app.run()
 
     df = base_datastore.get_table("keypoints_prediction").get_data()
     assert len(df) == 1

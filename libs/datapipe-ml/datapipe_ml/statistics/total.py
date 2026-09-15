@@ -5,10 +5,9 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore, DataTable
 from datapipe.run_config import RunConfig
@@ -85,23 +84,21 @@ class CountTotalLabelOnSubset(PipelineStep):
                 ).table_store
             ),
         )
-        pipeline = Pipeline(
-            [
-                DatatableBatchTransform(
-                    func=count_labels_total_on_subset,
-                    inputs=[
-                        self.input__item__ground_truth,
-                        required_pipeline_input(self.input__subset__has__item),
-                    ],
-                    outputs=[self.output__subset__has__label__total],
-                    transform_keys=self.primary_keys + ["subset_id"],
-                    labels=self.labels,
-                    kwargs=dict(primary_keys=self.primary_keys),
-                    chunk_size=self.chunk_size,
-                ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        pipeline = [
+            DatatableBatchTransform(
+                func=count_labels_total_on_subset,
+                inputs=[
+                    self.input__item__ground_truth,
+                    required_pipeline_input(self.input__subset__has__item),
+                ],
+                outputs=[self.output__subset__has__label__total],
+                transform_keys=self.primary_keys + ["subset_id"],
+                labels=self.labels,
+                kwargs=dict(primary_keys=self.primary_keys),
+                chunk_size=self.chunk_size,
+            ),
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps
 
 
 def count_labels_total(
@@ -154,17 +151,15 @@ class CountTotalLabel(PipelineStep):
                 ).table_store
             ),
         )
-        pipeline = Pipeline(
-            [
-                DatatableBatchTransform(
-                    func=count_labels_total,
-                    inputs=[self.input__item__ground_truth],
-                    outputs=[self.output__item__has__total_label],
-                    transform_keys=self.primary_keys,
-                    labels=self.labels,
-                    kwargs=dict(primary_keys=self.primary_keys),
-                    chunk_size=self.chunk_size,
-                ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+        pipeline = [
+            DatatableBatchTransform(
+                func=count_labels_total,
+                inputs=[self.input__item__ground_truth],
+                outputs=[self.output__item__has__total_label],
+                transform_keys=self.primary_keys,
+                labels=self.labels,
+                kwargs=dict(primary_keys=self.primary_keys),
+                chunk_size=self.chunk_size,
+            ),
+        ]
+        return DatapipeApp(ds, catalog, pipeline).steps

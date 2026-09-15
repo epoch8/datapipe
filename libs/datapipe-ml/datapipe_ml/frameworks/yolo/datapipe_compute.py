@@ -6,10 +6,9 @@ from typing import Any, Callable, Dict, List, Optional
 from datapipe.compute import (
     Catalog,
     ComputeStep,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.datatable import DataStore
 from datapipe.executor import ExecutorConfig
@@ -701,4 +700,4 @@ def build_yolo_compute(
         resume_config=resume_config,
         extra_train_kwargs=extra_train_kwargs,
     )
-    return build_compute(ds, catalog, Pipeline(steps))
+    return DatapipeApp(ds, catalog, steps).steps

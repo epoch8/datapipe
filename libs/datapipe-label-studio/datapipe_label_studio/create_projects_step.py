@@ -7,10 +7,9 @@ from datapipe.compute import (
     Catalog,
     ComputeStep,
     DataStore,
-    Pipeline,
+    DatapipeApp,
     PipelineStep,
     Table,
-    build_compute,
 )
 from datapipe.executor import ExecutorConfig
 from datapipe.step.batch_transform import BatchTransform
@@ -131,7 +130,9 @@ class CreateLabelStudioProjects(PipelineStep):
             df__input__label_studio_project_setting["project_id"] = project["id"]
             return df__input__label_studio_project_setting[["project_identifier", "project_id"]]
 
-        pipeline = Pipeline(
+        return DatapipeApp(
+            ds,
+            catalog,
             [
                 BatchTransform(
                     func=create_projects,
@@ -141,6 +142,5 @@ class CreateLabelStudioProjects(PipelineStep):
                     labels=self.labels,
                     executor_config=self.executor_config,
                 ),
-            ]
-        )
-        return build_compute(ds, catalog, pipeline)
+            ],
+        ).steps

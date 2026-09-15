@@ -2,7 +2,7 @@ import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import Integer, String
 
-from datapipe.compute import Catalog, Pipeline, Table, run_pipeline
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.run_config import RunConfig
 from datapipe.step.update_external_table import UpdateExternalTable
@@ -35,12 +35,13 @@ def test_external_table_updater_filter(dbconn: DBConn):
             "test": Table(store=test_store),
         }
     )
-    pipeline = Pipeline([UpdateExternalTable(output="test")])
+    pipeline = [UpdateExternalTable(output="test")]
     ds = DataStore(meta_dbconn, create_meta_table=True)
 
     test_store.insert_rows(df_test)
 
-    run_pipeline(ds, catalog, pipeline)
+    app = DatapipeApp(ds, catalog, pipeline)
+    app.run()
     assert_df_equal(
         catalog.get_datatable(ds, "test").get_data(),
         df_test,
@@ -48,7 +49,7 @@ def test_external_table_updater_filter(dbconn: DBConn):
     )
 
     config = RunConfig(filters={"composite_id_1": 2})
-    run_pipeline(ds, catalog, pipeline, run_config=config)
+    app.run(run_config=config)
     assert_df_equal(
         catalog.get_datatable(ds, "test").get_data(),
         df_test,

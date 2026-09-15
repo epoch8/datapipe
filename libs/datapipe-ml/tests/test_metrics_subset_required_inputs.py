@@ -380,12 +380,12 @@ def test_subset_metrics_use_inner_join_for_required_inputs(
     required_tables,
 ):
     _require_metrics_runtime()
-    from datapipe.compute import Pipeline, build_compute
+    from datapipe.compute import DatapipeApp
 
     ds = base_datastore
     catalog = catalog_factory(dbconn)
-    steps = build_compute(ds, catalog, Pipeline([step_factory()]))
-    step = _first_batch_transform_step(steps)
+    app = DatapipeApp(ds, catalog, [step_factory()])
+    step = _first_batch_transform_step(app.steps)
     _assert_inner_join_inputs(step, required_tables)
 
 
@@ -446,7 +446,7 @@ def test_orphan_prediction_without_subset_is_skipped(
     subset_output,
 ):
     _require_metrics_runtime()
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     ds = base_datastore
     catalog = catalog_factory(dbconn)
@@ -535,8 +535,8 @@ def test_orphan_prediction_without_subset_is_skipped(
             )
         )
 
-    steps = build_compute(ds, catalog, Pipeline([step_factory()]))
-    run_steps(ds, steps)
+    app = DatapipeApp(ds, catalog, [step_factory()])
+    app.run()
 
     overall = ds.get_table(subset_output).get_data()
     assert len(overall) == 1
@@ -549,7 +549,7 @@ def test_orphan_prediction_without_subset_is_skipped(
 
 def test_frozen_dataset_keypoints_metrics_use_inner_join(base_datastore, dbconn):
     _require_metrics_runtime()
-    from datapipe.compute import Catalog, Pipeline, Table, build_compute
+    from datapipe.compute import Catalog, DatapipeApp, Table
     from datapipe.store.database import TableStoreDB
 
     from datapipe_ml.tasks.keypoints.metrics import CountMetrics_FrozenDataset_KeypointsModel
@@ -595,24 +595,22 @@ def test_frozen_dataset_keypoints_metrics_use_inner_join(base_datastore, dbconn)
             ),
         }
     )
-    steps = build_compute(
+    app = DatapipeApp(
         base_datastore,
         catalog,
-        Pipeline(
-            [
-                CountMetrics_FrozenDataset_KeypointsModel(
-                    input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
-                    input__keypoints_model="keypoints_model",
-                    input__keypoints_prediction="keypoints_prediction",
-                    output__keypoints_model__metrics_on__frozen_dataset="keypoints_metrics_on_frozen_dataset",
-                    primary_keys=["image_id"],
-                    bbox_id__name=None,
-                    create_table=True,
-                )
-            ]
-        ),
+        [
+            CountMetrics_FrozenDataset_KeypointsModel(
+                input__keypoints_frozen_dataset__has__image_gt="keypoints_frozen_dataset__has__image_gt",
+                input__keypoints_model="keypoints_model",
+                input__keypoints_prediction="keypoints_prediction",
+                output__keypoints_model__metrics_on__frozen_dataset="keypoints_metrics_on_frozen_dataset",
+                primary_keys=["image_id"],
+                bbox_id__name=None,
+                create_table=True,
+            )
+        ],
     )
-    step = _first_batch_transform_step(steps)
+    step = _first_batch_transform_step(app.steps)
     _assert_inner_join_inputs(
         step,
         {"keypoints_frozen_dataset__has__image_gt", "keypoints_prediction"},
@@ -621,7 +619,7 @@ def test_frozen_dataset_keypoints_metrics_use_inner_join(base_datastore, dbconn)
 
 def test_orphan_item_without_subset_is_skipped_for_total_labels(base_datastore, dbconn):
     _require_metrics_runtime()
-    from datapipe.compute import Pipeline, build_compute, run_steps
+    from datapipe.compute import DatapipeApp
 
     ds = base_datastore
     catalog = _total_labels_catalog(dbconn)
@@ -632,8 +630,8 @@ def test_orphan_item_without_subset_is_skipped_for_total_labels(base_datastore, 
         pd.DataFrame({"item_id": ["i_valid"], "subset_id": ["val"]})
     )
 
-    steps = build_compute(ds, catalog, Pipeline([_build_total_labels_step()]))
-    run_steps(ds, steps)
+    app = DatapipeApp(ds, catalog, [_build_total_labels_step()])
+    app.run()
 
     totals = ds.get_table("subset_label_total").get_data()
     assert set(totals["subset_id"]) == {"val"}

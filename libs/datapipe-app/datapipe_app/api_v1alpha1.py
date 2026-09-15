@@ -4,10 +4,8 @@ import pandas as pd
 from datapipe.compute import (
     Catalog,
     ComputeStep,
+    DatapipeApp,
     DataStore,
-    Pipeline,
-    run_steps,
-    run_steps_changelist,
 )
 from datapipe.step.batch_transform import BaseBatchTransformStep
 from datapipe.store.database import TableStoreDB
@@ -94,8 +92,7 @@ def filter_steps_by_labels(steps: List[ComputeStep], labels: Labels = [], name_p
 
 
 def update_data(
-    ds: DataStore,
-    catalog: Catalog,
+    app: DatapipeApp,
     steps: List[ComputeStep],
     background_tasks: BackgroundTasks,
     table_name: str,
@@ -103,7 +100,7 @@ def update_data(
     background: bool,
     enable_changelist: bool = True,
 ) -> UpdateDataResponse:
-    dt = catalog.get_datatable(ds, table_name)
+    dt = app.catalog.get_datatable(app.ds, table_name)
 
     cl = ChangeList()
 
@@ -120,9 +117,9 @@ def update_data(
     #     cl.append(dt.name, idx)
     if enable_changelist:
         if background:
-            background_tasks.add_task(run_steps_changelist, ds=ds, steps=steps, changelist=cl)
+            background_tasks.add_task(app.run_changelist, cl, steps=steps)
         else:
-            run_steps_changelist(ds=ds, steps=steps, changelist=cl)
+            app.run_changelist(cl, steps=steps)
 
     return UpdateDataResponse(result="ok")
 
@@ -267,7 +264,11 @@ def get_data_post(ds: DataStore, catalog: Catalog, req: GetDataRequest) -> GetDa
         )
 
 
-def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[ComputeStep]) -> FastAPI:
+def make_app(datapipe_app: DatapipeApp) -> FastAPI:
+    ds = datapipe_app.ds
+    catalog = datapipe_app.catalog
+    steps = datapipe_app.steps
+
     app = FastAPI()
 
     @app.get("/graph", response_model=GraphResponse)
@@ -321,8 +322,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
         background_tasks: BackgroundTasks,
     ) -> UpdateDataResponse:
         return update_data(
-            ds=ds,
-            catalog=catalog,
+            app=datapipe_app,
             steps=filter_steps_by_labels(steps, labels=req.labels),
             background_tasks=background_tasks,
             table_name=req.table_name,
@@ -396,7 +396,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
 
     @app.post("/run")
     def run():
-        run_steps(ds=ds, steps=steps)
+        datapipe_app.run(steps=steps)
 
     # TODO refactor out to component based extension system
     # TODO automatic setup of webhook on project creation
@@ -416,8 +416,7 @@ def make_app(ds: DataStore, catalog: Catalog, pipeline: Pipeline, steps: List[Co
         ]
 
         return update_data(
-            ds=ds,
-            catalog=catalog,
+            app=datapipe_app,
             steps=steps,
             background_tasks=background_tasks,
             table_name=table_name,

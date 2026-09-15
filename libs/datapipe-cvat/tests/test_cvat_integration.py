@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 import requests
 import datapipe_cvat.cvat_step as cvat_step_module
-from datapipe.compute import Catalog, Pipeline, Table, build_compute, run_steps
+from datapipe.compute import Catalog, DatapipeApp, Table
 from datapipe.datatable import DataStore
 from datapipe.step.batch_generate import do_batch_generate
 from datapipe.store.database import TableStoreDB
@@ -805,36 +805,34 @@ def cvat_pipeline_case(tmp_dir, dbconn, cvat_url, cvat_credentials):
             )
         }
     )
-    pipeline = Pipeline(
-        [
-            CVATStep(
-                input="image_raw",
-                output__input_batches="image_batches",
-                output__cvat_task="cvat_task",
-                output__cvat_files="cvat_files",
-                output__cvat_annotation="cvat_annotation",
-                task_sync_table="cvat_task_sync_table",
-                cvat_url=cvat_url,
-                cvat_organization="",
-                cvat_credentials=cvat_credentials,
-                cvat_project_id=project.id,
-                primary_keys=["image_id", "task_queue_id"],
-                file_path_column="image_path",
-                cloud_storage_bucket=None,
-                files_batch=2,
-                minimum_files_in_job=2,
-                task_queue_id__name="task_queue_id",
-                task_name_format="datapipe-cvat-test {task_queue_id} batch={inner_task_id}",
-                max_attempts=1,
-                attempt_poll_s=1,
-                create_table=True,
-            )
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
+    pipeline = [
+        CVATStep(
+            input="image_raw",
+            output__input_batches="image_batches",
+            output__cvat_task="cvat_task",
+            output__cvat_files="cvat_files",
+            output__cvat_annotation="cvat_annotation",
+            task_sync_table="cvat_task_sync_table",
+            cvat_url=cvat_url,
+            cvat_organization="",
+            cvat_credentials=cvat_credentials,
+            cvat_project_id=project.id,
+            primary_keys=["image_id", "task_queue_id"],
+            file_path_column="image_path",
+            cloud_storage_bucket=None,
+            files_batch=2,
+            minimum_files_in_job=2,
+            task_queue_id__name="task_queue_id",
+            task_name_format="datapipe-cvat-test {task_queue_id} batch={inner_task_id}",
+            max_attempts=1,
+            attempt_poll_s=1,
+            create_table=True,
+        )
+    ]
+    app = DatapipeApp(ds, catalog, pipeline)
 
     try:
-        yield ds, steps, client, project, tmp_dir
+        yield ds, app, client, project, tmp_dir
     finally:
         try:
             for task in project.get_tasks():
@@ -876,37 +874,35 @@ def cvat_pipeline_delete_case(tmp_dir, dbconn, cvat_url, cvat_credentials):
             )
         }
     )
-    pipeline = Pipeline(
-        [
-            CVATStep(
-                input="image_raw",
-                output__input_batches="image_batches",
-                output__cvat_task="cvat_task",
-                output__cvat_files="cvat_files",
-                output__cvat_annotation="cvat_annotation",
-                task_sync_table="cvat_task_sync_table",
-                cvat_url=cvat_url,
-                cvat_organization="",
-                cvat_credentials=cvat_credentials,
-                cvat_project_id=project.id,
-                primary_keys=["image_id", "task_queue_id"],
-                file_path_column="image_path",
-                cloud_storage_bucket=None,
-                delete_unannotated_tasks_only_on_update=True,
-                files_batch=2,
-                minimum_files_in_job=2,
-                task_queue_id__name="task_queue_id",
-                task_name_format="datapipe-cvat-delete-test {task_queue_id} batch={inner_task_id}",
-                max_attempts=1,
-                attempt_poll_s=1,
-                create_table=True,
-            )
-        ]
-    )
-    steps = build_compute(ds, catalog, pipeline)
+    pipeline = [
+        CVATStep(
+            input="image_raw",
+            output__input_batches="image_batches",
+            output__cvat_task="cvat_task",
+            output__cvat_files="cvat_files",
+            output__cvat_annotation="cvat_annotation",
+            task_sync_table="cvat_task_sync_table",
+            cvat_url=cvat_url,
+            cvat_organization="",
+            cvat_credentials=cvat_credentials,
+            cvat_project_id=project.id,
+            primary_keys=["image_id", "task_queue_id"],
+            file_path_column="image_path",
+            cloud_storage_bucket=None,
+            delete_unannotated_tasks_only_on_update=True,
+            files_batch=2,
+            minimum_files_in_job=2,
+            task_queue_id__name="task_queue_id",
+            task_name_format="datapipe-cvat-delete-test {task_queue_id} batch={inner_task_id}",
+            max_attempts=1,
+            attempt_poll_s=1,
+            create_table=True,
+        )
+    ]
+    app = DatapipeApp(ds, catalog, pipeline)
 
     try:
-        yield ds, steps, client, project, tmp_dir
+        yield ds, app, client, project, tmp_dir
     finally:
         try:
             for task in project.get_tasks():
@@ -916,13 +912,13 @@ def cvat_pipeline_delete_case(tmp_dir, dbconn, cvat_url, cvat_credentials):
             pass
 
 
-def _run_with_df(ds: DataStore, steps, df: pd.DataFrame) -> None:
+def _run_with_df(app: DatapipeApp, df: pd.DataFrame) -> None:
     do_batch_generate(
         func=_store_generated_df(df),
-        ds=ds,
-        output_dts=[ds.get_table("image_raw")],
+        ds=app.ds,
+        output_dts=[app.ds.get_table("image_raw")],
     )
-    run_steps(ds, steps)
+    app.run()
 
 
 def _build_cvat_pipeline_case(
@@ -950,34 +946,32 @@ def _build_cvat_pipeline_case(
             )
         }
     )
-    pipeline = Pipeline(
-        [
-            CVATStep(
-                input="image_raw",
-                output__input_batches="image_batches",
-                output__cvat_task="cvat_task",
-                output__cvat_files="cvat_files",
-                output__cvat_annotation="cvat_annotation",
-                task_sync_table="cvat_task_sync_table",
-                cvat_url=cvat_url,
-                cvat_organization="",
-                cvat_credentials=cvat_credentials,
-                cvat_project_id=project.id,
-                primary_keys=["image_id", "task_queue_id"],
-                file_path_column="image_path",
-                cloud_storage_bucket=None,
-                delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
-                files_batch=4,
-                minimum_files_in_job=4,
-                task_queue_id__name="task_queue_id",
-                task_name_format="datapipe-cvat-scenario {task_queue_id} batch={inner_task_id}",
-                max_attempts=1,
-                attempt_poll_s=1,
-                create_table=True,
-            )
-        ]
-    )
-    return ds, build_compute(ds, catalog, pipeline)
+    pipeline = [
+        CVATStep(
+            input="image_raw",
+            output__input_batches="image_batches",
+            output__cvat_task="cvat_task",
+            output__cvat_files="cvat_files",
+            output__cvat_annotation="cvat_annotation",
+            task_sync_table="cvat_task_sync_table",
+            cvat_url=cvat_url,
+            cvat_organization="",
+            cvat_credentials=cvat_credentials,
+            cvat_project_id=project.id,
+            primary_keys=["image_id", "task_queue_id"],
+            file_path_column="image_path",
+            cloud_storage_bucket=None,
+            delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
+            files_batch=4,
+            minimum_files_in_job=4,
+            task_queue_id__name="task_queue_id",
+            task_name_format="datapipe-cvat-scenario {task_queue_id} batch={inner_task_id}",
+            max_attempts=1,
+            attempt_poll_s=1,
+            create_table=True,
+        )
+    ]
+    return ds, DatapipeApp(ds, catalog, pipeline)
 
 
 @pytest.fixture
@@ -991,7 +985,7 @@ def cvat_scenario_case(tmp_dir, dbconn, cvat_url, cvat_credentials, request):
             labels=[PatchedLabelRequest(name="cat")],
         )
     )
-    ds, steps = _build_cvat_pipeline_case(
+    ds, app = _build_cvat_pipeline_case(
         dbconn=dbconn,
         cvat_url=cvat_url,
         cvat_credentials=cvat_credentials,
@@ -999,7 +993,7 @@ def cvat_scenario_case(tmp_dir, dbconn, cvat_url, cvat_credentials, request):
         delete_unannotated_tasks_only_on_update=delete_unannotated_tasks_only_on_update,
     )
     try:
-        yield ds, steps, client, project, tmp_dir, delete_unannotated_tasks_only_on_update
+        yield ds, app, client, project, tmp_dir, delete_unannotated_tasks_only_on_update
     finally:
         try:
             for task in project.get_tasks():
@@ -1053,7 +1047,7 @@ def _mark_scenario_annotations(ds: DataStore, project, scenario_name: str, state
 
 @pytest.mark.parametrize("cvat_scenario_case", [False, True], indirect=True)
 def test_real_cvat_pipeline_frame_update_scenarios(cvat_scenario_case):
-    ds, steps, _, project, tmp_dir, delete_unannotated_tasks_only_on_update = cvat_scenario_case
+    ds, app, _, project, tmp_dir, delete_unannotated_tasks_only_on_update = cvat_scenario_case
     initial_df = pd.concat(
         [
             _make_scenario_initial_df(tmp_dir, scenario_name, states)
@@ -1069,14 +1063,14 @@ def test_real_cvat_pipeline_frame_update_scenarios(cvat_scenario_case):
         ignore_index=True,
     )
 
-    _run_with_df(ds, steps, initial_df)
+    _run_with_df(app, initial_df)
     assert len(project.get_tasks()) == len(REAL_CVAT_SCENARIO_BATCHES)
     for scenario_name, states in REAL_CVAT_SCENARIO_BATCHES:
         _mark_scenario_annotations(ds, project, scenario_name, states)
     task_ids_before_by_scenario = {task.name.split(" ")[1]: task.id for task in project.get_tasks()}
     initial_cvat_files = ds.get_table("cvat_files").get_data()
 
-    _run_with_df(ds, steps, updated_df)
+    _run_with_df(app, updated_df)
 
     task_ids_after = {task.id for task in project.get_tasks()}
     expected_new_tasks = sum(
@@ -1161,39 +1155,39 @@ def _set_first_task_completed(client, ds: DataStore, project) -> None:
 
 
 def test_cvat_pipeline_moderation(cvat_pipeline_case):
-    ds, steps, client, project, tmp_dir = cvat_pipeline_case
+    ds, app, client, project, tmp_dir = cvat_pipeline_case
 
-    run_steps(ds, steps)
-    run_steps(ds, steps)
+    app.run()
+    app.run()
 
-    _run_with_df(ds, steps, _make_image_df(tmp_dir))
+    _run_with_df(app, _make_image_df(tmp_dir))
 
     assert len(ds.get_table("image_batches").get_data()) == TASKS_COUNT
     assert len(ds.get_table("cvat_task").get_data()) == 2
     assert len(ds.get_table("cvat_files").get_data()) == TASKS_COUNT
     assert len(project.get_tasks()) == 2
 
-    run_steps(ds, steps)
+    app.run()
     assert len(project.get_tasks()) == 2
 
     _set_first_task_completed(client, ds, project)
-    run_steps(ds, steps)
+    app.run()
 
     assert len(ds.get_table("cvat_annotation").get_data()) == 2
 
 
 def test_cvat_pipeline_when_data_is_changed(cvat_pipeline_case):
-    ds, steps, _, project, tmp_dir = cvat_pipeline_case
+    ds, app, _, project, tmp_dir = cvat_pipeline_case
     df1 = _make_image_df(tmp_dir)
     df2 = df1.copy()
     df2.loc[0, "annotations"] = (
         '<image><box label="cat" source="manual" occluded="0" xtl="12" ytl="7" xbr="32" ybr="27" z_order="0" /></image>'
     )
 
-    _run_with_df(ds, steps, df1)
+    _run_with_df(app, df1)
     task_ids_before = sorted(ds.get_table("cvat_task").get_data()["task_id"].tolist())
 
-    _run_with_df(ds, steps, df2)
+    _run_with_df(app, df2)
 
     assert len(ds.get_table("cvat_files").get_data()) == TASKS_COUNT
     assert len(project.get_tasks()) == 2
@@ -1201,12 +1195,12 @@ def test_cvat_pipeline_when_data_is_changed(cvat_pipeline_case):
 
 
 def test_cvat_pipeline_when_some_data_is_deleted(cvat_pipeline_case):
-    ds, steps, _, project, tmp_dir = cvat_pipeline_case
+    ds, app, _, project, tmp_dir = cvat_pipeline_case
     df1 = _make_image_df(tmp_dir)
     df2 = df1.iloc[:2].reset_index(drop=True)
 
-    _run_with_df(ds, steps, df1)
-    _run_with_df(ds, steps, df2)
+    _run_with_df(app, df1)
+    _run_with_df(app, df2)
 
     assert len(ds.get_table("image_raw").get_data()) == 2
     assert len(ds.get_table("cvat_files").get_data()) == 2
@@ -1214,10 +1208,10 @@ def test_cvat_pipeline_when_some_data_is_deleted(cvat_pipeline_case):
 
 
 def test_cvat_pipeline_when_task_is_missing_from_cvat(cvat_pipeline_case):
-    ds, steps, client, project, tmp_dir = cvat_pipeline_case
+    ds, app, client, project, tmp_dir = cvat_pipeline_case
     df = _make_image_df(tmp_dir)
 
-    _run_with_df(ds, steps, df)
+    _run_with_df(app, df)
     missing_task_id = project.get_tasks()[0].id
     missing_cvat_task = ds.get_table("cvat_task").get_data()
     missing_cvat_task = missing_cvat_task[missing_cvat_task["task_id"] == missing_task_id]
@@ -1228,7 +1222,7 @@ def test_cvat_pipeline_when_task_is_missing_from_cvat(cvat_pipeline_case):
     ds.get_table("cvat_files").delete_by_idx(missing_cvat_files)
     ds.get_table("cvat_task_sync_table").delete_by_idx(missing_cvat_task)
 
-    run_steps(ds, steps)
+    app.run()
 
     assert len(project.get_tasks()) == 2
     assert len(ds.get_table("cvat_task").get_data()) == 2
@@ -1236,7 +1230,7 @@ def test_cvat_pipeline_when_task_is_missing_from_cvat(cvat_pipeline_case):
 
 
 def test_cvat_pipeline_specific_updating_scenario(cvat_pipeline_delete_case):
-    ds, steps, _, project, tmp_dir = cvat_pipeline_delete_case
+    ds, app, _, project, tmp_dir = cvat_pipeline_delete_case
     df1 = _make_image_df(tmp_dir, ids=[f"image_{idx}" for idx in range(4)])
     df2 = pd.concat(
         [
@@ -1247,10 +1241,10 @@ def test_cvat_pipeline_specific_updating_scenario(cvat_pipeline_delete_case):
     )
     df2.loc[0, "image_path"] = _make_image_files(tmp_dir, ["image_0_changed"])["image_0_changed"]
 
-    _run_with_df(ds, steps, df1)
+    _run_with_df(app, df1)
     task_ids_before = set(ds.get_table("cvat_task").get_data()["task_id"].tolist())
     tasks_before_count = len(project.get_tasks())
-    _run_with_df(ds, steps, df2)
+    _run_with_df(app, df2)
 
     assert len(ds.get_table("image_raw").get_data()) == 4
     assert len(ds.get_table("cvat_files").get_data()) == 4
@@ -1259,18 +1253,18 @@ def test_cvat_pipeline_specific_updating_scenario(cvat_pipeline_delete_case):
 
 
 def test_cvat_pipeline_moderate_then_delete_task(cvat_pipeline_delete_case):
-    ds, steps, client, project, tmp_dir = cvat_pipeline_delete_case
+    ds, app, client, project, tmp_dir = cvat_pipeline_delete_case
     df = _make_image_df(tmp_dir)
 
-    _run_with_df(ds, steps, df)
+    _run_with_df(app, df)
     _set_first_task_completed(client, ds, project)
-    run_steps(ds, steps)
+    app.run()
     assert len(ds.get_table("cvat_annotation").get_data()) == 2
 
     ds.get_table("image_raw").delete_by_idx(
         pd.DataFrame({"image_id": ["image_0", "image_1"], "task_queue_id": ["queue1", "queue1"]})
     )
-    run_steps(ds, steps)
+    app.run()
 
     assert len(ds.get_table("image_raw").get_data()) == 2
     assert len(ds.get_table("cvat_files").get_data()) == 2
