@@ -27,6 +27,39 @@ Plugin can expect some information in `click.Context`:
 * `ctx.obj["executor"]`: `datapipe.executor.Executor` contains an instance of
   Executor which will be used to perform computation
 
+* `ctx.obj["pipeline_spec"]`: the `module:symbol` string the pipeline was
+  loaded from, or `None` when the app was bound directly through
+  [`run_cli`](../reference/cli.md#binding-a-pipeline-to-your-own-console-script)
+  and there is no module path to report
+
+## Pipeline initialization
+
+Packages can run code against the `DatapipeApp` as soon as the CLI has it,
+through the `datapipe.pipeline_init` entry-point group:
+
+```python
+from types import ModuleType
+
+from datapipe.compute import DatapipeApp
+
+def init_pipeline(
+    app: DatapipeApp,
+    *,
+    pipeline_module: ModuleType | None,
+    pipeline_spec: str | None,
+) -> None:
+    ...
+```
+
+```toml
+[project.entry-points."datapipe.pipeline_init"]
+my_init = "my_package.init:init_pipeline"
+```
+
+Both keyword arguments are `None` when the app was bound with `run_cli`: there
+is no module to hand over and no spec string. Write hooks so that they work
+without them.
+
 ## Example
 
 To see example of extending `datapipe` cli see `datapipe_app.cli`:

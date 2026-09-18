@@ -4,8 +4,9 @@ import math
 from typing import Any, Callable, Iterator, cast
 
 import pandas as pd
+import sqlalchemy
 from opentelemetry import trace
-from sqlalchemy import Column, MetaData, Table, create_engine, func, text
+from sqlalchemy import Column, MetaData, Table, func, text
 from sqlalchemy.pool import QueuePool, SingletonThreadPool
 from sqlalchemy.schema import SchemaItem
 from sqlalchemy.sql.base import SchemaEventTarget
@@ -61,7 +62,10 @@ class DBConn:
             self.insert = insert
             self.func_greatest = func.max
 
-            self.con = create_engine(
+            # Looked up on the module at call time (not imported by name), so
+            # SQLAlchemyInstrumentor, which wraps sqlalchemy.create_engine, traces
+            # statements on this engine.
+            self.con = sqlalchemy.create_engine(
                 connstr,
                 poolclass=SingletonThreadPool,
                 **create_engine_kwargs,
@@ -80,7 +84,7 @@ class DBConn:
             self.insert = pg_insert
             self.func_greatest = func.greatest
 
-            self.con = create_engine(
+            self.con = sqlalchemy.create_engine(
                 connstr,
                 poolclass=QueuePool,
                 pool_pre_ping=True,

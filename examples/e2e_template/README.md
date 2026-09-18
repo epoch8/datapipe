@@ -46,11 +46,11 @@ What each piece is for:
 
 - `datapipe-label-studio` — Label Studio pipeline steps.
 - `datapipe-ml[torch,fiftyone]` — YOLO training/inference/metrics and FiftyOne table stores; pulls in
-`datapipe-core[s3fs]` for listing and downloading images from S3/MinIO in `steps.py`.
+`datapipe-core[s3fs]` for listing and downloading images from S3/RustFS in `steps.py`.
 
 ### Local services
 
-Start Postgres, MinIO, MongoDB (FiftyOne), and Label Studio from this directory:
+Start Postgres, RustFS, MongoDB (FiftyOne), and Label Studio from this directory:
 
 ```bash
 docker compose up
@@ -61,7 +61,7 @@ Wait until Label Studio is ready.
 Services:
 
 - Postgres — `localhost:5432` (`postgres` / `password`)
-- MinIO — `localhost:9000` (API), `localhost:9001` (console), bucket `datapipe-e2e` (only needed for the sample-data quick start; see [Data ingest](#data-ingest))
+- RustFS — `localhost:9000` (API), `localhost:9001` (console), bucket `datapipe-e2e` (only needed for the sample-data quick start; see [Data ingest](#data-ingest))
 - MongoDB — `localhost:27017` (FiftyOne dataset metadata; set `FIFTYONE_DATABASE_URI` in `.env`)
 - Label Studio — `http://localhost:8080`
 
@@ -96,9 +96,9 @@ Everything is rooted at a single `DATAPIPE_E2E_DIR` (a local path or `s3://` URL
 
 The pipeline `working_dir` (models, resized images, training artifacts) is `$DATAPIPE_E2E_DIR/datapipe/` — a **sibling** of `images/`, never nested under it. This is why both share one root yet input listing never re-ingests its own crops (which would otherwise grow image counts, e.g. 72 instead of 20).
 
-### Sample data (local MinIO)
+### Sample data (local RustFS)
 
-Default quick start uses MinIO from `docker compose`. With services running and `.env` loaded:
+Default quick start uses RustFS from `docker compose`. With services running and `.env` loaded:
 
 ```bash
 uv run python scripts/seed_sample_data.py
@@ -113,11 +113,11 @@ uv run python scripts/seed_sample_data.py --detection-limit 10 --keypoints-limit
 uv run python scripts/seed_sample_data.py --skip-download   # upload existing sample_data/
 ```
 
-`.env` uses two MinIO endpoints: `S3_ENDPOINT_URL=http://localhost:9000` for datapipe on the host, and `LABEL_STUDIO_S3_ENDPOINT_URL=http://minio:9000` for Label Studio inside Docker (same compose network as the `minio` service). Task `image_url` values use `S3_PUBLIC_URL` (`http://localhost:9000/...`) so the browser can load images directly; the bucket is configured for anonymous read in `docker-compose.yml`.
+`.env` uses two RustFS endpoints: `S3_ENDPOINT_URL=http://localhost:9000` for datapipe on the host, and `LABEL_STUDIO_S3_ENDPOINT_URL=http://rustfs:9000` for Label Studio inside Docker (same compose network as the `rustfs` service). Task `image_url` values use `S3_PUBLIC_URL` (`http://localhost:9000/...`) so the browser can load images directly; the bucket is configured for anonymous read in `docker-compose.yml`.
 
 ### Your own S3 bucket
 
-Use this path when images already live in AWS S3 or another S3-compatible store. MinIO is not required.
+Use this path when images already live in AWS S3 or another S3-compatible store. RustFS is not required.
 
 1. Set `DATAPIPE_E2E_DIR=s3://<bucket>` in `.env` and upload images under `s3://<bucket>/images/` (flat filenames work best — subdirectory paths are flattened to `___` in `image_name`).
 2. Set valid credentials in `.env`:
@@ -125,7 +125,7 @@ Use this path when images already live in AWS S3 or another S3-compatible store.
    - `DATAPIPE_E2E_DIR` (e.g. `s3://my-bucket`; the Label Studio S3 storage bucket is derived from it)
    - For AWS S3, omit `S3_ENDPOINT_URL` and `LABEL_STUDIO_S3_ENDPOINT_URL` so datapipe and Label Studio use the default AWS endpoint.
    - Set `S3_PUBLIC_URL` to a base URL the Label Studio browser can fetch. URLs are built as `$S3_PUBLIC_URL/<bucket>/images/<key>` (path-style), e.g. `https://s3.us-east-1.amazonaws.com` for a publicly readable bucket, or a CDN/proxy in front of your objects.
-3. Remove MinIO from `docker-compose.yml`: delete the `minio` and `minio-init` services and drop their `depends_on` entries from `label-studio`. Keep `postgres`, `mongo`, and `label-studio`.
+3. Remove RustFS from `docker-compose.yml`: delete the `rustfs` and `rustfs-init` services and drop their `depends_on` entries from `label-studio`. Keep `postgres`, `mongo`, and `label-studio`.
 4. Skip `scripts/seed_sample_data.py`. Create Postgres schemas before the first pipeline run:
 
 ```bash
@@ -133,7 +133,7 @@ cd image_detection && datapipe db create-all
 cd ../image_keypoints && datapipe db create-all
 ```
 
-For self-hosted S3-compatible storage (not AWS), keep `S3_ENDPOINT_URL` for datapipe on the host and set `LABEL_STUDIO_S3_ENDPOINT_URL` to an endpoint reachable from the Label Studio container (same pattern as MinIO, but pointing at your store).
+For self-hosted S3-compatible storage (not AWS), keep `S3_ENDPOINT_URL` for datapipe on the host and set `LABEL_STUDIO_S3_ENDPOINT_URL` to an endpoint reachable from the Label Studio container (same pattern as RustFS, but pointing at your store).
 
 ## Customization
 

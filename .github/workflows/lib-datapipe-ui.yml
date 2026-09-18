@@ -1,0 +1,111 @@
+name: datapipe-ui
+
+on:
+  push:
+    branches:
+      - "master"
+      - "v**"
+    paths:
+      - ".github/workflows/lib-datapipe-ui.yml"
+      - "libs/datapipe-ui/**"
+      - "packages/**"
+      - ".npmrc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - ".github/workflows/lib-datapipe-ui.yml"
+      - "libs/datapipe-ui/**"
+      - "packages/**"
+      - ".npmrc"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests (@datapipe/ui)
+        run: pnpm --filter @datapipe/ui test
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core SPA
+        run: pnpm --filter @datapipe/ui build
+
+      - name: Package static assets for Python wheel
+        run: pnpm --filter @datapipe/ui build:package
+
+  test-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Build packaged static assets
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @datapipe/ui build:package
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Test datapipe-ui Python package
+        run: |
+          uv pip install --system -e "libs/datapipe-ui"
+          uv pip install --system "pytest<8"
+          pytest libs/datapipe-ui/tests

@@ -28,6 +28,7 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.12"]
@@ -61,6 +62,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         include:
@@ -128,7 +130,7 @@ jobs:
 
       - name: Install dependencies with uv
         run: |
-          uv pip install --system -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic,pyarrow]" "pytest<8" "pytest_cases" "elasticsearch<9"
+          uv pip install --system -e "libs/datapipe-core[sqlite,excel,milvus,gcsfs,s3fs,redis,qdrant,gcp,elastic,pyarrow,otlp]" "pytest<8" "pytest_cases" "elasticsearch<9"
 
       - name: Test with pytest
         run: |
@@ -144,6 +146,7 @@ jobs:
 
   test-examples:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.12"]

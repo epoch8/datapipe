@@ -2,16 +2,14 @@ import importlib.metadata as metadata
 import os
 import sys
 import time
+from types import ModuleType
 from typing import cast
 
 import click
 import pandas as pd
 import rich
+from click.core import ParameterSource
 from opentelemetry import trace
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from rich import print as rprint
 
 from datapipe.compute import ComputeStep, DatapipeApp, run_steps, run_steps_changelist
@@ -21,6 +19,7 @@ from datapipe.run_callback import CompositeRunCallback
 from datapipe.run_callback_stdout import StdoutRunCallback
 from datapipe.run_config import RunConfig
 from datapipe.step.batch_transform import BaseBatchTransformStep
+from datapipe.telemetry import setup_tracing
 from datapipe.types import IndexDF, Labels
 
 tracer = trace.get_tracer("datapipe_app")
@@ -33,6 +32,22 @@ def _entry_points(group: str):
         return metadata.entry_points(group=group)  # type: ignore
     except TypeError:
         return metadata.entry_points().get(group, [])  # type: ignore
+
+
+def _init_pipeline(
+    app: DatapipeApp,
+    *,
+    pipeline_module: ModuleType | None = None,
+    pipeline_spec: str | None = None,
+) -> None:
+    """Run the `datapipe.pipeline_init` hooks against `app`.
+
+    `pipeline_module` and `pipeline_spec` are None when the app was bound
+    directly through `run_cli` instead of imported from a module path.
+    """
+    for entry_point in _entry_points("datapipe.pipeline_init"):
+        init_fn = entry_point.load()
+        init_fn(app, pipeline_module=pipeline_module, pipeline_spec=pipeline_spec)
 
 
 def load_pipeline(pipeline_name: str) -> DatapipeApp:
@@ -55,9 +70,7 @@ def load_pipeline(pipeline_name: str) -> DatapipeApp:
 
     assert isinstance(app, DatapipeApp)
 
-    for entry_point in _entry_points("datapipe.pipeline_init"):
-        init_fn = entry_point.load()
-        init_fn(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
+    _init_pipeline(app, pipeline_module=pipeline_mod, pipeline_spec=pipeline_name)
 
     return app
 
@@ -124,7 +137,7 @@ def _run_steps_cli(
     *,
     executor: Executor,
     labels: Labels,
-    pipeline_spec: str,
+    pipeline_spec: str | None,
     attach_callbacks: bool,
 ) -> None:
     loaded_callbacks = (
@@ -204,47 +217,13 @@ def cli(
 
     setup_logging()
 
-    trace.set_tracer_provider(TracerProvider(resource=Resource.create({SERVICE_NAME: "datapipe"})))
-
-    SQLAlchemyInstrumentor().instrument()
-
-    if trace_stdout:
-        processor = BatchSpanProcessor(ConsoleSpanExporter())
-        trace.get_tracer_provider().add_span_processor(processor)  # type: ignore
-
-    if trace_jaeger:
-        from opentelemetry.exporter.jaeger.thrift import JaegerExporter  # type: ignore
-
-        # create a JaegerExporter
-        jaeger_exporter = JaegerExporter(
-            # configure agent
-            # agent_host_name='localhost',
-            # agent_port=6831,
-            # optional: configure also collector
-            collector_endpoint=f"http://{trace_jaeger_host}:{trace_jaeger_port}/api/traces?format=jaeger.thrift",
-            # username=xxxx, # optional
-            # password=xxxx, # optional
-            # max_tag_value_length=None # optional
-        )
-
-        # Create a BatchSpanProcessor and add the exporter to it
-        span_processor = BatchSpanProcessor(jaeger_exporter)
-
-        # add to the tracer
-        trace.get_tracer_provider().add_span_processor(span_processor)  # type: ignore
-
-    if trace_gcp:
-        try:
-            from opentelemetry.exporter.cloud_trace import (  # type: ignore
-                CloudTraceSpanExporter,
-            )
-        except ImportError:
-            raise ImportError("Please install opentelemetry-exporter-cloud-trace to use GCP Trace")
-
-        cloud_trace_exporter = CloudTraceSpanExporter(
-            resource_regex=r".*",
-        )
-        trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(cloud_trace_exporter))  # type: ignore
+    setup_tracing(
+        trace_stdout=trace_stdout,
+        trace_jaeger=trace_jaeger,
+        trace_jaeger_host=trace_jaeger_host,
+        trace_jaeger_port=trace_jaeger_port,
+        trace_gcp=trace_gcp,
+    )
 
     if executor == "SingleThreadExecutor":
         ctx.obj["executor"] = SingleThreadExecutor()
@@ -259,8 +238,22 @@ def cli(
     else:
         raise ValueError(f"Unknown executor: {executor}")
 
-    with tracer.start_as_current_span("init"):
-        ctx.obj["pipeline"] = load_pipeline(pipeline)
+    if ctx.obj.get("pipeline") is None:
+        with tracer.start_as_current_span("init"):
+            ctx.obj["pipeline"] = load_pipeline(pipeline)
+
+        ctx.obj["pipeline_spec"] = pipeline
+    else:
+        # A pipeline bound by `run_cli`. An explicit --pipeline cannot mean
+        # anything here; DATAPIPE_PIPELINE inherited from the environment is
+        # ignored rather than treated as a mistake.
+        if ctx.get_parameter_source("pipeline") is ParameterSource.COMMANDLINE:
+            raise click.UsageError(
+                "--pipeline cannot be used: this entry point has a pipeline bound",
+            )
+
+        ctx.obj["pipeline_spec"] = None
+        _init_pipeline(ctx.obj["pipeline"])
 
 
 @cli.group()
@@ -290,7 +283,7 @@ def table_list(ctx: click.Context) -> None:
 def main_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool) -> None:
     app: DatapipeApp = ctx.obj["pipeline"]
     executor: Executor = ctx.obj["executor"]
-    pipeline_spec = ctx.params.get("pipeline", "app")
+    pipeline_spec = ctx.obj.get("pipeline_spec")
 
     with tracer.start_as_current_span("run"):
         while True:
@@ -481,8 +474,7 @@ def step_run(ctx: click.Context, loop: bool, loop_delay: int, no_callbacks: bool
 
     executor: Executor = ctx.obj["executor"]
     labels: Labels = ctx.obj.get("step_labels", [])
-    parent = ctx.parent
-    pipeline_spec = parent.params.get("pipeline", "app") if parent is not None else "app"
+    pipeline_spec = ctx.obj.get("pipeline_spec")
 
     steps_to_run_names = [f"'{i.name}'" for i in steps_to_run]
     print(f"Running following steps: {', '.join(steps_to_run_names)}")
@@ -632,6 +624,28 @@ for entry_point in _entry_points("datapipe.cli"):
 
 def main():
     cli(auto_envvar_prefix="DATAPIPE")
+
+
+def run_cli(app: DatapipeApp) -> None:
+    """Run the datapipe CLI against an already-constructed `DatapipeApp`.
+
+    Use this to give a project its own console script, so the CLI runs against
+    the app the project has already built instead of importing it again from a
+    module path::
+
+        # src/myproject/cli.py
+        from datapipe.cli import run_cli
+
+        from myproject.app import app
+
+
+        def main() -> None:
+            run_cli(app)
+
+    Nothing is imported, `sys.path` is left alone and the working directory is
+    not consulted, so the pipeline module exists once in the process.
+    """
+    cli(auto_envvar_prefix="DATAPIPE", obj={"pipeline": app})
 
 
 if __name__ == "__main__":

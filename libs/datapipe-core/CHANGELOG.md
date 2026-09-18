@@ -1,5 +1,52 @@
 # Unreleased (WIP)
 
+## Binding a pipeline to the CLI without importing it
+
+* New `datapipe.cli.run_cli(app)` runs the whole CLI against a `DatapipeApp`
+  you already have, so a packaged project can declare its own console script
+  instead of letting the CLI import its pipeline module a second time:
+
+  ```python
+  # src/my_project/cli.py
+  from datapipe.cli import run_cli
+
+  from my_project.app import app
+
+
+  def main() -> None:
+      run_cli(app)
+  ```
+
+  Nothing is imported, `sys.path` is untouched and the working directory is not
+  consulted. `datapipe` itself and `--pipeline` are unchanged
+* Plugin commands from the `datapipe.cli` group (`datapipe api`,
+  `datapipe agent`) and the `datapipe.pipeline_init` hooks work the same on a
+  bound entry point
+* Passing `--pipeline` on the command line to a bound entry point is a usage
+  error; `DATAPIPE_PIPELINE` from the environment is ignored instead
+* `datapipe.pipeline_init` hooks now receive `pipeline_module=None` and
+  `pipeline_spec=None` when the app was bound, so both arguments are optional
+* **Fix:** run callbacks received the literal `"app"` as `pipeline_spec` on
+  every invocation, whatever `--pipeline` said — `datapipe run` read it from
+  the `run` command's own params and `datapipe step run` from the `step`
+  group's, neither of which holds `--pipeline`. The spec is now resolved once
+  by the top-level group and published as `ctx.obj["pipeline_spec"]`, which is
+  `None` for a bound app
+* `click>=8.1` is now required (was `>=7.1.2`)
+
+## Tracing configured by standard OpenTelemetry env
+
+* `datapipe` CLI exports traces over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT`
+  (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) is set and `OTEL_SDK_DISABLED` is not
+  `true`. Endpoint, headers and sampler come from the standard `OTEL_*` env.
+  Needs the new `otlp` extra (`datapipe-core[otlp]`); without it a warning is
+  logged and the command runs as usual
+* `OTEL_SERVICE_NAME` / `OTEL_RESOURCE_ATTRIBUTES` now set the service name;
+  `datapipe` stays the default
+* If `TRACEPARENT` (and optionally `TRACESTATE`) is set, the process continues
+  that trace: `init` and the command's spans become children of the caller's
+  span, so whatever starts `datapipe run` can make the run part of its trace
+
 ## Extension hooks for CLI
 
 * New `importlib.metadata` entry-point groups for extensions:

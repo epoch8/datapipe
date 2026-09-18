@@ -213,7 +213,7 @@ def upload_images(local_paths: list[Path]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Download sample COCO images and upload them to local MinIO.")
+    parser = argparse.ArgumentParser(description="Download sample COCO images and upload them to local RustFS.")
     parser.add_argument("--detection-limit", type=int, default=120, help="Number of cat/dog images")
     parser.add_argument("--keypoints-limit", type=int, default=10, help="Number of person keypoint images")
     parser.add_argument(

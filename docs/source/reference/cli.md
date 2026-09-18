@@ -28,6 +28,39 @@ Example: `datapipe --pipeline my_project.pipeline:app` will try to import module
 `my_project.pipeline` and will look for object `app`, it will expect this object
 to be of type `DatapipeApp`.
 
+The value can also come from the `DATAPIPE_PIPELINE` environment variable.
+
+### Binding a pipeline to your own console script
+
+A packaged project usually has its `DatapipeApp` in hand already, and does not
+want the CLI to import it a second time. `datapipe.cli.run_cli` runs the whole
+CLI against an app you pass in:
+
+```python
+# src/my_project/cli.py
+from datapipe.cli import run_cli
+
+from my_project.app import app
+
+
+def main() -> None:
+    run_cli(app)
+```
+
+```toml
+[project.scripts]
+my-pipeline = "my_project.cli:main"
+```
+
+`my-pipeline run`, `my-pipeline step list` and every other command — including
+those added by plugins — then work exactly as they do under `datapipe`. Nothing
+is imported, `sys.path` is left alone and the working directory is not
+consulted, so `my_project.app` exists once in the process.
+
+A bound entry point already has its pipeline, so passing `--pipeline` to it is
+an error. `DATAPIPE_PIPELINE` inherited from the environment is ignored rather
+than treated as a mistake.
+
 ### `--executor`
 
 Possible values:
