@@ -8,7 +8,7 @@ readme = "README.md"
 requires-python = ">=3.10,<3.15"
 dependencies = [
     "cityhash>=0.4.2,<0.5",
-    "click>=7.1.2",
+    "click>=8.1",
     "cloudpickle>=1.6.0",
     "fsspec>=2021.11.1",
     "numpy>=1.21.0, <3.0",
@@ -38,6 +38,7 @@ redis = ["redis>=4.3.4,<5"]
 qdrant = ["qdrant-client>=1.1.7,<2"]
 ray = ["ray[default]>=2.5.0,<3"]
 gcp = ["opentelemetry-exporter-gcp-trace"]
+otlp = ["opentelemetry-exporter-otlp-proto-http"]
 elastic = ["elasticsearch>=8.17.1"]
 neo4j = ["neo4j"]
 pyarrow = ["pyarrow>=21.0.0"]

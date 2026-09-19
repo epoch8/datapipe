@@ -1,0 +1,108 @@
+/**
+ * Cloud island layout — same Graph proportions as Django workspace.html,
+ * owned by shared datapipe-ui so local/cloud stay in sync.
+ */
+
+.datapipe-cloud-island {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.datapipe-cloud-island .graph-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+  padding-left: 0;
+  padding-right: 0;
+  gap: 0;
+}
+
+.datapipe-cloud-island .graph-page-overview {
+  flex: 0 0 auto;
+  max-height: none;
+  min-height: 0;
+  overflow: hidden;
+  margin-bottom: 8px;
+  padding-right: 0;
+}
+
+.datapipe-cloud-island .graph-page-overview:has(.graph-page-overview-runs) {
+  padding-right: 292px;
+}
+
+.datapipe-cloud-island .graph-page-overview-main {
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  display: block;
+}
+
+.datapipe-cloud-island .pipeline-label-overview-compact {
+  margin-bottom: 0 !important;
+  max-height: none;
+  height: auto;
+  display: block;
+  overflow: hidden;
+}
+
+.datapipe-cloud-island .pipeline-label-overview-compact .ant-card-body {
+  padding: 8px 12px 10px !important;
+  display: block;
+  overflow: visible;
+}
+
+.datapipe-cloud-island .pipeline-label-overview-compact .pipeline-label-graph-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.datapipe-cloud-island .pipeline-label-overview-compact .pipeline-label-graph-canvas {
+  zoom: 0.7;
+}
+
+.datapipe-cloud-island .graph-page .pipeline-card {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+}
+
+.datapipe-cloud-island .graph-page .pipeline-card-body {
+  flex: 1 1 0%;
+  min-height: 0 !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.datapipe-cloud-island .pipeline-graph-shell {
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  flex: none !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.datapipe-cloud-island .pipeline-graph-shell .pipeline-graph-embedded,
+.datapipe-cloud-island .pipeline-graph-shell .cy-container {
+  height: 100% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.datapipe-cloud-island .ops-page {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 0;
+  box-sizing: border-box;
+}

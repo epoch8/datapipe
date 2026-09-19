@@ -1,0 +1,5 @@
+# CRA production output
+/build/
+
+# Temporary dirs from manual BUILD_PATH experiments
+/build-verify/

@@ -1,0 +1,245 @@
+/**
+ * Shared Datapipe design tokens (light / dark).
+ *
+ * Import once in the host app:
+ *   import "@datapipe/ui-core/tokens.css";
+ *
+ * Theme switch: set `data-theme` / `data-ui-theme` to `"light"` | `"dark"` on a root element.
+ * Teal accent + light/dark backgrounds; variable names also mirror operatorLight.css /
+ * opsPages.css (--dp-bg-app, --dp-accent, status chips, etc.) for gradual migration.
+ */
+
+:root,
+[data-ui-theme="light"],
+[data-theme="light"] {
+    /* Shell / LocalShell tokens */
+    --dp-bg: #f4f7fb;
+    --dp-bg-elevated: #ffffff;
+    --dp-bg-muted: #e8eef6;
+    --dp-text: #0f1b2d;
+    --dp-text-muted: #5b6b7c;
+    --dp-border: #d5dee8;
+    --dp-accent: #0d9488;
+    --dp-accent-hover: #0f766e;
+    --dp-accent-contrast: #ffffff;
+    --dp-accent-soft: #ccfbf1;
+    --dp-danger: #dc2626;
+    --dp-success: #16a34a;
+    --dp-warning: #d97706;
+    --dp-sidebar-bg: #0f172a;
+    --dp-sidebar-bg-2: #07151c;
+    --dp-sidebar-text: #e2e8f0;
+    --dp-sidebar-text-muted: #8fb3ad;
+    --dp-sidebar-active: rgba(13, 148, 136, 0.22);
+    --dp-sidebar-border: rgba(255, 255, 255, 0.12);
+    --dp-sidebar-hover-bg: rgba(45, 212, 191, 0.10);
+    --dp-sidebar-active-bg: rgba(13, 148, 136, 0.28);
+    --dp-sidebar-active-border: rgba(45, 212, 191, 0.32);
+    --dp-sidebar-active-glow: rgba(45, 212, 191, 0.12);
+    --dp-sidebar-active-text: #f0fffc;
+    --dp-sidebar-active-indicator: #2dd4bf;
+    --dp-card-shadow: 0 1px 2px rgba(15, 27, 45, 0.06);
+    --dp-radius: 10px;
+    --dp-card-radius: 12px;
+    --dp-font: "DM Sans", "Segoe UI", sans-serif;
+    --dp-mono: "JetBrains Mono", ui-monospace, monospace;
+
+    /* operatorLight.css aliases */
+    --dp-bg-app: #f5f8fc;
+    --dp-bg-surface: #ffffff;
+    --dp-border-subtle: #dbe3ef;
+    --dp-border-strong: #c8d3e1;
+    --dp-text-primary: #0b1220;
+    --dp-text-secondary: #5b6b82;
+    --dp-text-inverse: #ffffff;
+
+    --dp-graph-bg: #fbfdff;
+    --dp-graph-dot: #dce7f5;
+
+    --dp-edge: #52677f;
+    --dp-edge-muted: #c7d1de;
+    --dp-edge-active: #0d9488;
+    --dp-edge-related: #5ba8a0;
+    --dp-edge-error: #d92d20;
+    --dp-edge-sequential: #0f766e;
+
+    --dp-table-bg: #fff3e5;
+    --dp-table-bg-2: #ffe5c7;
+    --dp-table-border: #ff7a1a;
+    --dp-table-icon: #ff6b00;
+    --dp-table-text: #3e2407;
+
+    --dp-transform-bg: #effff3;
+    --dp-transform-bg-2: #dcf8e5;
+    --dp-transform-border: #16a34a;
+    --dp-transform-icon: #0fa83d;
+    --dp-transform-text: #083b18;
+
+    --dp-group-bg: #edfaf7;
+    --dp-group-bg-2: #ccfbf1;
+    --dp-group-border: #0d9488;
+    --dp-group-icon: #0d9488;
+    --dp-group-text: #115e59;
+
+    --dp-status-completed-bg: #d9fbe7;
+    --dp-status-completed-text: #087a2a;
+    --dp-status-completed-border: #8ee2a8;
+    --dp-status-pending-bg: #fff3c4;
+    --dp-status-pending-text: #a15c00;
+    --dp-status-pending-border: #ffc84d;
+    --dp-status-running-bg: #ccfbf1;
+    --dp-status-running-text: #0f766e;
+    --dp-status-running-border: #5eead4;
+    --dp-status-failed-bg: #ffe1df;
+    --dp-status-failed-text: #b42318;
+    --dp-status-failed-border: #ff9b94;
+
+    /* opsPages.css palette */
+    --dp-navy-950: #071b36;
+    --dp-navy-900: #09264a;
+    --dp-navy-800: #0b3260;
+    --dp-teal-600: #0d9488;
+    --dp-teal-500: #14b8a6;
+    --dp-teal-100: #ccfbf1;
+    --dp-cyan-500: #20c6e8;
+    --dp-green-500: #16a34a;
+    --dp-green-100: #dcfce7;
+    --dp-orange-500: #f97316;
+    --dp-orange-100: #ffedd5;
+    --dp-red-500: #ef4444;
+    --dp-red-100: #fee2e2;
+    --dp-gray-950: #0f172a;
+    --dp-gray-700: #334155;
+    --dp-gray-500: #64748b;
+    --dp-gray-300: #cbd5e1;
+    --dp-gray-200: #e2e8f0;
+    --dp-gray-100: #f1f5f9;
+    --dp-gray-50: #f8fafc;
+    --dp-card: #ffffff;
+    --dp-table-row-height: 44px;
+
+    --dp-ui-scale: 0.8;
+    --dp-vh: calc(100vh / var(--dp-ui-scale));
+    --dp-font-scale: 1.2;
+}
+
+[data-ui-theme="dark"],
+[data-theme="dark"],
+[data-bs-theme="dark"] {
+    --dp-bg: #0b1220;
+    --dp-bg-elevated: #121a2b;
+    --dp-bg-muted: #182236;
+    --dp-text: #e8eef7;
+    --dp-text-muted: #93a4b8;
+    --dp-border: #243147;
+    --dp-accent: #14b8a6;
+    --dp-accent-hover: #2dd4bf;
+    --dp-accent-contrast: #042f2e;
+    --dp-accent-soft: rgba(45, 212, 191, 0.16);
+    --dp-danger: #f87171;
+    --dp-success: #4ade80;
+    --dp-warning: #fbbf24;
+    --dp-sidebar-bg: #070b14;
+    --dp-sidebar-bg-2: #03080c;
+    --dp-sidebar-text: #dbe7f3;
+    --dp-sidebar-text-muted: #7a9e98;
+    --dp-sidebar-active: rgba(20, 184, 166, 0.2);
+    --dp-sidebar-border: rgba(255, 255, 255, 0.08);
+    --dp-sidebar-hover-bg: rgba(45, 212, 191, 0.12);
+    --dp-sidebar-active-bg: rgba(45, 212, 191, 0.22);
+    --dp-sidebar-active-border: rgba(45, 212, 191, 0.36);
+    --dp-sidebar-active-glow: rgba(45, 212, 191, 0.14);
+    --dp-sidebar-active-text: #f0fffc;
+    --dp-sidebar-active-indicator: #5eead4;
+    --dp-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+    --dp-bg-app: #0b1220;
+    --dp-bg-surface: #121a2a;
+    --dp-border-subtle: #243044;
+    --dp-border-strong: #334155;
+    --dp-text-primary: #e8eef7;
+    --dp-text-secondary: #94a3b8;
+    --dp-text-inverse: #0b1220;
+
+    --dp-graph-bg: #0f172a;
+    --dp-graph-dot: #1e293b;
+
+    --dp-edge: #94a3b8;
+    --dp-edge-muted: #334155;
+    --dp-edge-active: #2dd4bf;
+    --dp-edge-related: #5ba8a0;
+    --dp-edge-error: #f87171;
+    --dp-edge-sequential: #14b8a6;
+
+    --dp-table-bg: #2a1c10;
+    --dp-table-bg-2: #3a2412;
+    --dp-table-border: #fb923c;
+    --dp-table-icon: #fb923c;
+    --dp-table-text: #ffedd5;
+
+    --dp-transform-bg: #0f2418;
+    --dp-transform-bg-2: #163322;
+    --dp-transform-border: #4ade80;
+    --dp-transform-icon: #4ade80;
+    --dp-transform-text: #dcfce7;
+
+    --dp-group-bg: #0f2422;
+    --dp-group-bg-2: #134e4a;
+    --dp-group-border: #2dd4bf;
+    --dp-group-icon: #2dd4bf;
+    --dp-group-text: #ccfbf1;
+
+    --dp-status-completed-bg: #14532d;
+    --dp-status-completed-text: #86efac;
+    --dp-status-completed-border: #166534;
+    --dp-status-pending-bg: #713f12;
+    --dp-status-pending-text: #fde68a;
+    --dp-status-pending-border: #a16207;
+    --dp-status-running-bg: #134e4a;
+    --dp-status-running-text: #99f6e4;
+    --dp-status-running-border: #0f766e;
+    --dp-status-failed-bg: #7f1d1d;
+    --dp-status-failed-text: #fecaca;
+    --dp-status-failed-border: #991b1b;
+
+    --dp-gray-950: #f8fafc;
+    --dp-gray-700: #cbd5e1;
+    --dp-gray-500: #94a3b8;
+    --dp-gray-300: #475569;
+    --dp-gray-200: #334155;
+    --dp-gray-100: #1e293b;
+    --dp-gray-50: #0f172a;
+    --dp-card: #151f31;
+}
+
+.dp-badge-local {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: var(--dp-accent);
+    color: var(--dp-accent-contrast);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.dp-btn-primary {
+    background: var(--dp-accent);
+    color: var(--dp-accent-contrast);
+    border: 1px solid transparent;
+    border-radius: var(--dp-radius);
+    padding: 0.4rem 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.dp-btn-primary:hover {
+    background: var(--dp-accent-hover);
+}
+
+.dp-empty {
+    color: var(--dp-text-muted);
+    padding: 1.25rem;
+    text-align: center;
+}

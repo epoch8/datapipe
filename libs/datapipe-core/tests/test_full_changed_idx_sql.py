@@ -1,3 +1,5 @@
+from datapipe.types import IndexDF
+from typing import cast
 import pandas as pd
 from sqlalchemy import Column
 from sqlalchemy.sql.sqltypes import String
@@ -102,9 +104,9 @@ def test_check_full_step_idx_count_when_some_idxs_are_deleted(dbconn):
     ds.get_table("item").store_chunk(TEST__ITEM)
     ds.get_table("item2").store_chunk(TEST__ITEM2)
     ds.get_table("pipeline").store_chunk(TEST__PIPELINE)
-    ds.get_table("item").delete_by_idx(TEST__ITEM.iloc[0:5])
-    ds.get_table("item2").delete_by_idx(TEST__ITEM.iloc[0:5])
-    count, idx_gen = step.get_full_process_ids(ds)
+    ds.get_table("item").delete_by_idx(cast(IndexDF, TEST__ITEM.iloc[0:5]))
+    ds.get_table("item2").delete_by_idx(cast(IndexDF, TEST__ITEM2.iloc[0:5]))
+    _, idx_gen = step.get_full_process_ids(ds)
     idx = pd.concat([idx for idx in idx_gen], ignore_index=True)
     assert_idx_no_duplicates(idx, ["item_id", "pipeline_id"])
     TEST_RESULT = complex_function(

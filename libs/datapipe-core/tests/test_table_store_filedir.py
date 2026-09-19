@@ -448,7 +448,7 @@ def test_read_json_rows_folders(tmp_several_dirs_with_json_data):
     )
     TEST_DF_FOLDER0_WITH_FILEPATH = TEST_DF_FOLDER0.copy()
     TEST_DF_FOLDER0_WITH_FILEPATH["filepath"] = TEST_DF_FOLDER0_WITH_FILEPATH["id"].map(
-        lambda idx: f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"
+        lambda idx: f"{tmp_several_dirs_with_json_data}/folder0/folder{idx[1]}/{idx}.json"  # type: ignore
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER0_WITH_FILEPATH)
 
@@ -476,7 +476,7 @@ def test_read_json_rows_recursively(tmp_several_dirs_with_json_data):
         lambda idx: (
             f"{tmp_several_dirs_with_json_data}/folder{idx}/{idx}.json"
             if idx in ["0", "1", "2"]
-            else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"
+            else f"{tmp_several_dirs_with_json_data}/folder{idx[0]}/folder{idx[1]}/{idx}.json"  # type: ignore
         )
     )
     assert_ts_contains(ts_with_filepath, TEST_DF_FOLDER_RECURSIVELY_WITH_FILEPATH)
@@ -606,4 +606,4 @@ def test_write_read_rows__filedir_pandas_parquet(
     assert_idx_equal(data_df.index, saved_df.index)
 
     for i, row in data_df.iterrows():
-        assert row["data"].equals(saved_df["data"][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"
+        assert row["data"].equals(saved_df["data"][i]), f"Pandas DataFrame data is not equal to data in parquet: {i}"  # type: ignore

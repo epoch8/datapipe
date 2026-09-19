@@ -15,5 +15,9 @@ test_data/
 
 poetry.lock
 uv.lock
+!/uv.lock
 *.pt
 *.sqlite
+# Node (pnpm workspace)
+node_modules/
+libs/datapipe-ui/build/
