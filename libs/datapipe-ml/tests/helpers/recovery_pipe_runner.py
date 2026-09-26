@@ -28,15 +28,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.phase == "train":
         _install_short_lease_status_manager()
 
-    from tests.helpers.failure_injection import install_pipe_death_hooks_direct
-    from tests.helpers.failure_injection_bootstrap import WORK_DIR_ENV
-    from tests.helpers.training_recovery import (
+    from datapipe.compute import Pipeline, build_compute, run_steps
+
+    from .failure_injection import install_pipe_death_hooks_direct
+    from .failure_injection_bootstrap import WORK_DIR_ENV
+    from .training_recovery import (
         configure_recovery_steps,
         make_recovery_runtime,
         recovery_case_by_id,
     )
-    from datapipe.compute import Pipeline, build_compute, run_steps
-    from tests.helpers.training_smoke import run_pipeline
+    from .training_smoke import run_pipeline
 
     os.environ[WORK_DIR_ENV] = str(workdir)
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers.cloud_storage import assert_model_path_under_working_dir
-from tests.helpers.training_smoke import (
+from .helpers.cloud_storage import assert_model_path_under_working_dir
+from .helpers.training_smoke import (
     assert_model_artifact,
     assert_training_uses_architecture_label,
     detection_freeze_step,

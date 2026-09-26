@@ -5,11 +5,11 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from datapipe_ml.core.atomic_io import atomic_write_local
 from datapipe_ml.training.checkpoint_verify import is_zip_checkpoint_loadable
-from tests.helpers.checkpoint_fixtures import write_corrupt_zip_checkpoint, write_valid_zip_checkpoint
-from tests.helpers.checkpoint_kill9 import (
+
+from .helpers.checkpoint_fixtures import write_corrupt_zip_checkpoint, write_valid_zip_checkpoint
+from .helpers.checkpoint_kill9 import (
     kill9_during_atomic_checkpoint_save,
     kill9_during_non_atomic_checkpoint_save,
 )
@@ -95,7 +95,10 @@ def test_tf_resume_falls_back_when_last_checkpoint_is_corrupt(tmp_path: Path) ->
     run_dir = tmp_path / "model-a"
     run_dir.mkdir()
     last = run_dir / "002__last.keras"
-    metric = run_dir / "001__train_precision_0.10_train_recall_0.20__val_precision_0.30_val_recall_0.40_val_f1_score_0.50.keras"
+    metric = (
+        run_dir
+        / "001__train_precision_0.10_train_recall_0.20__val_precision_0.30_val_recall_0.40_val_f1_score_0.50.keras"
+    )
     write_corrupt_zip_checkpoint(last)
     write_valid_zip_checkpoint(metric, label="metric")
 
@@ -130,8 +133,8 @@ def test_tf_style_checkpoint_survives_kill9_before_replace(tmp_path: Path) -> No
 
 def test_torch_save_uses_atomic_checkpoint_io(tmp_path: Path) -> None:
     pytest.importorskip("torch")
-    from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
     import torch
+    from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
 
     target = tmp_path / "weights" / "epoch1.pt"
     target.parent.mkdir(parents=True)
@@ -159,9 +162,10 @@ def test_ultralytics_write_bytes_uses_atomic_checkpoint_io(tmp_path: Path) -> No
 
 def test_atomic_yolo_checkpoint_io_restores_patches(tmp_path: Path) -> None:
     pytest.importorskip("torch")
-    from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
-    import torch
     from pathlib import Path as StdPath
+
+    import torch
+    from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
 
     original_torch_save = torch.save
     original_write_bytes = StdPath.write_bytes
@@ -174,8 +178,8 @@ def test_atomic_yolo_checkpoint_io_restores_patches(tmp_path: Path) -> None:
 
 def test_yolov5_style_checkpoint_names_use_atomic_torch_save(tmp_path: Path) -> None:
     pytest.importorskip("torch")
-    from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
     import torch
+    from datapipe_ml.frameworks.yolo.checkpoint_io import atomic_yolo_checkpoint_io
 
     with atomic_yolo_checkpoint_io():
         for name in ("last.pt", "best.pt", "epoch3.pt"):

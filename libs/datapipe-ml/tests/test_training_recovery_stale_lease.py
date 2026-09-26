@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers.failure_injection import FAIL_AFTER_EPOCH_ENV, FAIL_MODE_ENV
-from tests.helpers.training_recovery import (
+from .helpers.failure_injection import FAIL_AFTER_EPOCH_ENV, FAIL_MODE_ENV
+from .helpers.training_recovery import (
     assert_stale_running_after_pipe_death,
     assert_status_manifest,
     model_rows,

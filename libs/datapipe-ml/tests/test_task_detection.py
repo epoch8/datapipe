@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers.training_smoke import (
+from .helpers.training_smoke import (
     assert_completed_training_status_with_manifest,
     assert_metrics_have_values,
     assert_model_artifact,
@@ -24,7 +24,7 @@ from tests.helpers.training_smoke import (
 @pytest.mark.slow
 @pytest.mark.training
 def test_training_smoke_sqlite_driver_supports_ci_full_outer_join(tmp_path):
-    from tests.helpers.training_smoke import get_sqlite_dbconnstr
+    from .helpers.training_smoke import get_sqlite_dbconnstr
 
     assert get_sqlite_dbconnstr(tmp_path / "training_smoke.sqlite").startswith("sqlite")
 

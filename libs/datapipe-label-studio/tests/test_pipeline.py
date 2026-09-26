@@ -10,17 +10,17 @@ from datapipe.step.batch_transform import BatchTransform
 from datapipe.step.datatable_transform import DatatableTransformStep
 from datapipe.store.database import TableStoreDB
 from datapipe.types import data_to_index
-from label_studio_sdk import LabelStudio
-from pytest_cases import parametrize, parametrize_with_cases
-from sqlalchemy.sql.schema import Column
-from sqlalchemy.sql.sqltypes import JSON, String
-
 from datapipe_label_studio.sdk_utils import get_project_by_title
 from datapipe_label_studio.upload_predictions_pipeline import (
     LabelStudioUploadPredictions,
 )
 from datapipe_label_studio.upload_tasks_pipeline import LabelStudioUploadTasks
-from tests.ls_test_helpers import (
+from label_studio_sdk import LabelStudio
+from pytest_cases import parametrize, parametrize_with_cases
+from sqlalchemy.sql.schema import Column
+from sqlalchemy.sql.sqltypes import JSON, String
+
+from .ls_test_helpers import (
     DELETE_UNANNOTATED_TASKS_ONLY_ON_UPDATE,
     INCLUDE_PARAMS,
     INCLUDE_PREDICTIONS,
@@ -31,7 +31,7 @@ from tests.ls_test_helpers import (
     make_best_model_from_predictions,
     wrapped_partial,
 )
-from tests.util import get_project_id, get_project_tasks, wait_until_label_studio_is_up
+from .util import get_project_id, get_project_tasks, wait_until_label_studio_is_up
 
 
 def gen_data_df():

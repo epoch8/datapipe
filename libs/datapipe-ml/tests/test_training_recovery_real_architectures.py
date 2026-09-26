@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers.failure_injection import (
+from .helpers.failure_injection import (
     FAIL_AFTER_EPOCH_ENV,
     FAIL_MODE_ENV,
     training_failure_hooks,
 )
-from tests.helpers.training_recovery import (
+from .helpers.training_recovery import (
     REAL_RECOVERY_CASE_PARAMS,
     TENSORFLOW_RECOVERY_CASE_IDS,
     assert_status_manifest,
@@ -22,7 +22,7 @@ from tests.helpers.training_recovery import (
     wait_for_manifest,
     wait_for_running_status,
 )
-from tests.helpers.training_smoke import run_pipeline
+from .helpers.training_smoke import run_pipeline
 
 pytestmark = [pytest.mark.slow, pytest.mark.training]
 

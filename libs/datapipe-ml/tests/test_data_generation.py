@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from tests.fixtures.smoke_data import (
+from .fixtures.smoke_data import (
     define_ground_truth_for_classification,
     generate_smoke_data,
     get_most_common_label,
 )
-from tests.utils import assert_columns_present, assert_no_nulls
+from .utils import assert_columns_present, assert_no_nulls
 
 
 def test_smoke_dataset_has_aligned_tables(smoke_dataset):

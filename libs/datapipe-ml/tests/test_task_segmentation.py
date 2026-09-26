@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers.training_smoke import (
+from .helpers.training_smoke import (
     assert_completed_training_status_with_manifest,
     assert_model_artifact,
     assert_table_has_rows,

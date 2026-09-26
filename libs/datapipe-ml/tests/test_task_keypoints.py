@@ -5,7 +5,8 @@ import pytest
 from sqlalchemy import JSON, Column
 from sqlalchemy.sql.sqltypes import DateTime, Integer, String
 
-from tests.helpers.training_smoke import (
+from .helpers.training_smoke import (
+    SMOKE_DEVICE,
     assert_completed_training_status_with_manifest,
     assert_metrics_have_values,
     assert_model_artifact,
@@ -16,7 +17,6 @@ from tests.helpers.training_smoke import (
     keypoints_train_step,
     make_runtime,
     run_pipeline,
-    SMOKE_DEVICE,
 )
 
 

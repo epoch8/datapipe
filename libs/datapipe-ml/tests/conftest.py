@@ -2,7 +2,7 @@ import os
 
 os.environ["SQLALCHEMY_WARN_20"] = "1"
 
-from tests.helpers.test_env import load_test_env
+from .helpers.test_env import load_test_env
 
 load_test_env()
 
@@ -13,8 +13,8 @@ import pytest
 from sqlalchemy import Column, create_engine, text
 from sqlalchemy.sql.sqltypes import JSON, String
 
-from tests.fixtures.smoke_data import SmokeDataset, make_smoke_dataset
-from tests.helpers.dbconn import get_sqlite_dbconnstr
+from .fixtures.smoke_data import SmokeDataset, make_smoke_dataset
+from .helpers.dbconn import get_sqlite_dbconnstr
 
 
 @pytest.fixture(

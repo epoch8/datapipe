@@ -13,16 +13,16 @@ import pandas as pd
 import pytest
 from datapipe.compute import Pipeline, PipelineStep, build_compute
 from datapipe.types import IndexDF
-
+from datapipe_ml.frameworks.yolo.checkpoint_sync import max_completed_epoch_from_run_dir
 from datapipe_ml.training.runs import active_lease
 from datapipe_ml.training.specs import TrainingResumeConfig, TrainingSyncConfig
-from datapipe_ml.frameworks.yolo.checkpoint_sync import max_completed_epoch_from_run_dir
 from datapipe_ml.training.sync import (
     manifest_path_for_run,
     read_checkpoint_manifest,
     verify_manifest_checkpoint,
 )
-from tests.helpers.training_smoke import (
+
+from .training_smoke import (
     SmokeRuntime,
     Workdir,
     detection_freeze_step,
@@ -230,7 +230,7 @@ def real_recovery_cases() -> list:
 
 def recovery_case_by_id(case_id: str) -> RealRecoveryCase:
     if case_id in TENSORFLOW_RECOVERY_CASE_IDS:
-        from tests.helpers.training_recovery_tensorflow import recovery_tensorflow_case_by_id
+        from .training_recovery_tensorflow import recovery_tensorflow_case_by_id
 
         return recovery_tensorflow_case_by_id(case_id)
     for param in real_recovery_torch_cases():
@@ -242,7 +242,7 @@ def recovery_case_by_id(case_id: str) -> RealRecoveryCase:
 
 def recovery_extra_step_configure(case: RealRecoveryCase) -> dict[type, StepConfigureFn] | None:
     if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
-        from tests.helpers.training_recovery_tensorflow import tensorflow_step_configure
+        from .training_recovery_tensorflow import tensorflow_step_configure
 
         return tensorflow_step_configure()
     return None
@@ -330,7 +330,7 @@ def make_recovery_runtime(
     tmp_path: Path, case: RealRecoveryCase, *, working_dir: Workdir | None = None
 ) -> tuple[SmokeRuntime, list]:
     if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
-        from tests.helpers.training_recovery_tensorflow import make_recovery_runtime as make_tf_recovery_runtime
+        from .training_recovery_tensorflow import make_recovery_runtime as make_tf_recovery_runtime
 
         return make_tf_recovery_runtime(tmp_path, case, working_dir=working_dir)
     workdir = working_dir if working_dir is not None else tmp_path
@@ -499,7 +499,7 @@ def invoke_real_train_callable_for_backfill(
     step: RecoveryTrainStep,
 ) -> None:
     if case.id in TENSORFLOW_RECOVERY_CASE_IDS:
-        from tests.helpers.training_recovery_tensorflow import (
+        from .training_recovery_tensorflow import (
             invoke_real_train_callable_for_backfill as invoke_tf_backfill,
         )
 

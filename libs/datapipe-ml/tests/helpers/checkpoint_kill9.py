@@ -6,7 +6,7 @@ import signal
 import time
 from pathlib import Path
 
-from tests.helpers.checkpoint_fixtures import write_corrupt_zip_checkpoint, write_valid_zip_checkpoint
+from .checkpoint_fixtures import write_corrupt_zip_checkpoint, write_valid_zip_checkpoint
 
 
 def _child_atomic_save_before_replace(checkpoint_path: str, ready_queue: mp.Queue) -> None:

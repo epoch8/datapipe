@@ -5,7 +5,7 @@ from typing import Callable
 
 import pytest
 
-from tests.helpers.training_smoke import (
+from .training_smoke import (
     Workdir,
     classification_freeze_step,
     classification_train_step,

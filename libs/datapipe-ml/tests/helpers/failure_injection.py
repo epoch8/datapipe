@@ -7,21 +7,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-
 from datapipe_ml.frameworks.yolo.checkpoint_sync import max_completed_epoch_from_run_dir
 from datapipe_ml.training.sync import manifest_path_for_run, read_checkpoint_manifest
 
-from tests.helpers.failure_injection_bootstrap import (
+from .failure_injection_bootstrap import (
     FAIL_AFTER_EPOCH_ENV,
     FAIL_MODE_ENV,
     checkpoint_for_epoch_exists,
     configured_fail_after_epoch,
     configured_fail_mode,
-    install_training_failure_hooks as _install_training_failure_hooks,
     install_training_failure_hooks_direct,
     maybe_fail_after_epoch,
     run_dir_for_pipe_death_poll,
     run_training_with_failure_hooks,
+)
+from .failure_injection_bootstrap import (
+    install_training_failure_hooks as _install_training_failure_hooks,
 )
 
 if TYPE_CHECKING:
@@ -68,9 +69,7 @@ def _spawn_with_pipe_death(target, *args):  # noqa: ANN001
             except queue.Empty:
                 if not p.is_alive():
                     p.join()
-                    raise RuntimeError(
-                        f"Training subprocess exited before returning a result. exitcode={p.exitcode}"
-                    )
+                    raise RuntimeError(f"Training subprocess exited before returning a result. exitcode={p.exitcode}")
                 run_dir = run_dir_for_pipe_death_poll()
                 if fail_after is not None and run_dir and _pipe_death_checkpoint_ready(run_dir, fail_after):
                     if p.is_alive():

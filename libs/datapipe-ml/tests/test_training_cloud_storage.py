@@ -3,19 +3,20 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import fsspec
 import pytest
-
 from datapipe_ml.training.specs import TrainingResumeConfig
 from datapipe_ml.training.sync import write_checkpoint_manifest
-from tests.helpers.checkpoint_fixtures import write_valid_zip_checkpoint
-from tests.helpers.cloud_smoke import (
+
+from .helpers.checkpoint_fixtures import write_valid_zip_checkpoint
+from .helpers.cloud_smoke import (
     CLOUD_SMOKE_CASE_PARAMS,
     cloud_smoke_artifact,
     cloud_smoke_runtime_kwargs,
     cloud_smoke_status_table,
     cloud_smoke_steps,
 )
-from tests.helpers.cloud_storage import (
+from .helpers.cloud_storage import (
     assert_model_path_under_working_dir,
     assert_url_exists,
     cloud_working_dir,
@@ -23,18 +24,18 @@ from tests.helpers.cloud_storage import (
     s3_base_url,
     upload_local_file,
 )
-from tests.helpers.failure_injection import (
+from .helpers.failure_injection import (
     FAIL_AFTER_EPOCH_ENV,
     FAIL_MODE_ENV,
     training_failure_hooks,
 )
-from tests.helpers.training_recovery import (
+from .helpers.training_recovery import (
     REAL_RECOVERY_CASE_PARAMS,
     assert_status_manifest,
     make_recovery_runtime,
     recovery_case_by_id,
 )
-from tests.helpers.training_smoke import (
+from .helpers.training_smoke import (
     assert_completed_training_status_with_manifest,
     assert_model_artifact,
     assert_training_uses_architecture_label,
@@ -44,8 +45,6 @@ from tests.helpers.training_smoke import (
     make_cloud_runtime,
     run_pipeline,
 )
-
-import fsspec
 
 pytestmark = [pytest.mark.cloud_storage, pytest.mark.service_e2e]
 

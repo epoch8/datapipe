@@ -1,8 +1,6 @@
 {
-    "python.testing.pytestArgs": [
-        ".",
-        "--ignore=test_data"
-    ],
+    "python.testing.pytestArgs": [],
+    "python.testing.cwd": "${workspaceFolder}",
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
     "python.analysis.extraPaths": [
