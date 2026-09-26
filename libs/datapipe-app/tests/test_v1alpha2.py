@@ -5,7 +5,7 @@ import pytest
 from datapipe.compute import run_steps
 from fastapi.testclient import TestClient
 
-from datapipe_app.datapipe_api import DatapipeAPI
+from datapipe_app.app.datapipe_api import DatapipeAPI
 
 
 def test_graph_works(app):
